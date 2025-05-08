@@ -1,0 +1,79 @@
+from typing import Annotated
+
+from fastapi import APIRouter, status, Depends, HTTPException, Path
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.auth.token_handler import TokenHandler
+from src.database.setup import get_db
+
+from src.dependencies.roles_authorization import project_role_based_authorization
+from src.repositories.warehouse_repository import (WarehouseCreateRepository,
+                                                   WarehouseSelectedByIDSRepository,
+                                                   WarehouseFetchRepository)
+from src.schemas.user_schemas import UserTokenSchema
+
+from src.schemas.warehouse_schema import WarehouseListCreateSchema, WarehouseListSelectByIDS, \
+    WarehouseListSelectByIDSResponse
+
+from src.logging_config import setup_logger
+logger = setup_logger(__name__, 'warehouse.log')
+
+
+router = APIRouter()
+
+
+# Tested
+@router.post('/create-warehouse_list', status_code=status.HTTP_201_CREATED)
+async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
+                                db: AsyncSession = Depends(get_db),
+                                user_id = Depends(project_role_based_authorization)):
+
+    repository = WarehouseCreateRepository(db, warehouse_list, user_id)
+    try:
+        data = await repository.create_warehouse_list()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f'Create Warehouse Error {ex}')
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
+
+
+
+
+@router.post('/fetch-selected-ids', status_code=200,
+             response_model=list[WarehouseListSelectByIDSResponse])
+async def fetch_selected_ids(request: WarehouseListSelectByIDS,
+                             payload:UserTokenSchema = Depends(TokenHandler.verify_access_token),
+                             db: AsyncSession = Depends(get_db)):
+
+    repository = WarehouseSelectedByIDSRepository(db, payload)
+    try:
+        data = await repository.fetch_selected_ids(request.ids)
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Selected IDS error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+
+
+@router.get('/fetch-warehouse_list',
+             status_code=200,
+             response_model=list[WarehouseListSelectByIDSResponse])
+async def fetch_warehouse(payload:UserTokenSchema = Depends(TokenHandler.verify_access_token),
+                          db: AsyncSession = Depends(get_db)):
+
+    repository = WarehouseFetchRepository(db, payload)
+
+    try:
+        data = await repository.fetch_warehouse()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Warehouse list error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
