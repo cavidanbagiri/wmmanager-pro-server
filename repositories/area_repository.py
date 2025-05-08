@@ -7,7 +7,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import status, HTTPException
-from watchfiles import awatch
 
 from src.dependencies.verify_project import ProjectVerify
 from src.models import ProjectModel

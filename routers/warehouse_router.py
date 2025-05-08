@@ -1,6 +1,4 @@
-from typing import Annotated
-
-from fastapi import APIRouter, status, Depends, HTTPException, Path
+from fastapi import APIRouter, status, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.token_handler import TokenHandler

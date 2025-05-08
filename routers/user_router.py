@@ -1,9 +1,7 @@
 
-from fastapi import APIRouter, Depends, HTTPException, dependencies
+from fastapi import APIRouter, Depends, HTTPException
 # from fastapi.dependencies import
-from fastapi.responses import JSONResponse, Response
-from fastapi_limiter.depends import RateLimiter
-
+from fastapi.responses import Response
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

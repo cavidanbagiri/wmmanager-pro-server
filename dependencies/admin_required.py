@@ -1,4 +1,4 @@
-from typing import Any, Type, Coroutine
+from typing import Type
 
 from fastapi import Depends, status
 from fastapi.exceptions import HTTPException
