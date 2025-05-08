@@ -14,7 +14,7 @@ from src.models.area_model import AreaModel
 from src.models.ordered_model import GroupModel
 from src.models.stock_models import StockModel
 from src.models.warehouse_model import WarehouseModel
-from src.schemas.area_schemas import AreaListAddSchema, AreaAddSchema, AreaResponseSchema
+from src.schemas.area_schemas import AreaListAddSchema, AreaAddSchema, AreaResponseSchema, AreaReturnStockSchema
 
 from src.logging_config import setup_logger
 from src.schemas.user_schemas import UserTokenSchema
@@ -127,6 +127,55 @@ class AreaAddRepository:
             raise HTTPException(500, "Internal Server Error")
 
 
+class AreaReturnToStockRepository:
+
+    def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema):
+        self.db = db
+        self.return_data = return_data
+
+    async def return_to_stock(self) -> dict[str, str]:
+
+        return_data: float = self.return_data.quantity
+
+        try:
+            if return_data > 0:
+                find_data = await self.db.get(AreaModel, self.return_data.id)
+                if find_data:
+                    if return_data > find_data.quantity:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                            detail=f"Failed to return to stock. {return_data} is greater than possible stock")
+
+                    # 1 - update area
+                    await self.db.execute(update(AreaModel)
+                                        .where(AreaModel.id == self.return_data.id)
+                                        .values(quantity = AreaModel.quantity - return_data)
+                                    )
+                    # 2 - Update to stock
+                    await self.db.execute(update(StockModel)
+                                          .where(StockModel.id == self.return_data.stock_id)
+                                          .values(left_over = StockModel.left_over + self.return_data.quantity)
+                                          )
+                    await self.db.commit()
+                    return {"detail": "Successfully returned"}
+
+                else:
+                    logger.error("Area Data is not found")
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Failed to return to stock. {self.return_data.id} not found")
+
+            else:
+                logger.error(f"Failed to return to stock. Quantity cant be less than possible area quantity {self.return_data.quantity}")
+                raise HTTPException(status_code=500,
+                                    detail=f"Failed to return to stock. Quantity cant be less than possible area quantity {self.return_data.quantity}")
+
+        except HTTPException as ex:
+            raise ex
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database error during return to stock {ex}")
+            raise HTTPException(500, "Failed to return to stock")
+        except Exception as ex:
+            logger.exception(f"Unexpected error {ex}")
+            raise HTTPException(500, "Internal Server Error")
+
 
 class AreaFetchRepository:
 
@@ -137,7 +186,7 @@ class AreaFetchRepository:
         self.verifier = ProjectVerify(user_payload=payload, model=AreaModel)
 
 
-    async def fetch(self):
+    async def fetch(self) -> List[AreaResponseSchema]:
 
         try:
 
@@ -168,7 +217,9 @@ class AreaFetchRepository:
                     project_name = i.project.project_name.upper(),
                     card_number = i.card_number,
                     created_at= i.created_at,
-                    group_name = i.group.group_name.title()
+                    group_name = i.group.group_name.title(),
+                    stock_id= i.stock.id,
+                    project_id= i.project.id
                 )
                 return_list.append(data)
             return return_list

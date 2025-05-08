@@ -49,3 +49,13 @@ class AreaResponseSchema(BaseModel):
     card_number: str
     created_at: datetime
     group_name: str
+    stock_id: int
+    project_id: int
+
+
+class AreaReturnStockSchema(BaseModel):
+
+    id: int
+    stock_id: int
+    quantity: float
+    project_id: int
