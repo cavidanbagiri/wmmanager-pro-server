@@ -164,9 +164,9 @@ class AreaReturnToStockRepository:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Failed to return to stock. {self.return_data.id} not found")
 
             else:
-                logger.error(f"Failed to return to stock. Quantity cant be less than possible area quantity {self.return_data.quantity}")
-                raise HTTPException(status_code=500,
-                                    detail=f"Failed to return to stock. Quantity cant be less than possible area quantity {self.return_data.quantity}")
+                logger.error(f"Failed to return to stock. Quantity cant be less than possible 0")
+                raise HTTPException(status_code=400,
+                                    detail=f"Failed to return to stock. Quantity cant be less than 0")
 
         except HTTPException as ex:
             raise ex

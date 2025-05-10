@@ -12,7 +12,7 @@ class WarehouseSchema(BaseModel):
     qty: float
     unit: Units
     price: float | None = None
-    currency: str
+    currency: str | None = None
     material_code_id: int
     category_id: int
 
@@ -25,7 +25,6 @@ class WarehouseSchema(BaseModel):
             return val
         raise ValueError(f'{val} is not available in Units list.')
 
-
 class WarehouseListCreateSchema(BaseModel):
 
     po_num: str | None = None
@@ -36,6 +35,21 @@ class WarehouseListCreateSchema(BaseModel):
 
     data_list: list[WarehouseSchema]
 
+
+class WarehouseUpdateSchema(BaseModel):
+    id:int
+    material_name: str
+    qty: float
+    unit: Units
+    price: float | None = None
+    currency: str | None = None
+    category_id: int
+    po_num: str | None = None
+    doc_num: str | None = None
+    material_code_id: int
+    project_id: int
+    ordered_id: int
+    company_id: int
 
 
 class WarehouseListSelectByIDS(BaseModel):
@@ -50,8 +64,8 @@ class WarehouseListSelectByIDSResponse(BaseModel):
     price: float | None = None
     currency: str | None = None
     created_at: datetime
-    project: str
-    ordered: str
-    company: str
+    project: dict
+    ordered: dict
+    company: dict
+    material_code: dict
     category: str
-    material_code: str

@@ -17,6 +17,7 @@ from src.logging_config import setup_logger
 logger = setup_logger(__name__, "area.log")
 
 
+# Tested
 @router.post('/add_area', status_code=201)
 async def add_area(area_data: AreaListAddSchema,
                    db: AsyncSession = Depends(get_db),
@@ -33,6 +34,7 @@ async def add_area(area_data: AreaListAddSchema,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
+# Tested
 @router.post('/return_to_stock',
              dependencies=[Depends(project_role_based_authorization)],
              status_code = status.HTTP_201_CREATED)
@@ -51,7 +53,7 @@ async def return_to_stock(return_data: AreaReturnStockSchema,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
-
+# Tested
 @router.get('/fetch_area', status_code=200,
             response_model=List[AreaResponseSchema])
 async def fetch_area(db: AsyncSession = Depends(get_db),

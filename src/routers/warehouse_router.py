@@ -1,6 +1,7 @@
 from fastapi import APIRouter, status, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.repositories.warehouse_repository import WarehouseUpdateRepository
 from src.auth.token_handler import TokenHandler
 from src.database.setup import get_db
 
@@ -11,7 +12,7 @@ from src.repositories.warehouse_repository import (WarehouseCreateRepository,
 from src.schemas.user_schemas import UserTokenSchema
 
 from src.schemas.warehouse_schema import WarehouseListCreateSchema, WarehouseListSelectByIDS, \
-    WarehouseListSelectByIDSResponse
+    WarehouseListSelectByIDSResponse, WarehouseUpdateSchema
 
 from src.logging_config import setup_logger
 logger = setup_logger(__name__, 'warehouse.log')
@@ -35,6 +36,22 @@ async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
     except Exception as ex:
         logger.error(f'Create Warehouse Error {ex}')
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
+
+
+
+@router.post('/update-warehouse_list',
+            status_code=status.HTTP_202_ACCEPTED)
+async def update_warehouse_list(update_data: WarehouseUpdateSchema,
+                                db: AsyncSession = Depends(get_db)):
+    repository = WarehouseUpdateRepository(db, update_data, user_id = Depends(project_role_based_authorization))
+    try:
+        data = await repository.update_warehouse()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f'Update Warehouse Error {ex}')
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Internal Server Error {ex}')
 
 
 

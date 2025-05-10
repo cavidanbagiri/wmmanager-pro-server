@@ -1,11 +1,11 @@
 from fastapi import HTTPException, status
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
+from src.schemas.warehouse_schema import WarehouseUpdateSchema
 from src.dependencies.verify_project import ProjectVerify
 from src.models import ProjectModel
 from src.models.common_models import CompanyModel
@@ -71,6 +71,58 @@ class WarehouseCreateRepository:
             raise HTTPException(status_code=400, detail="Create warehouse error ")
 
 
+class WarehouseUpdateRepository:
+
+    def __init__(self, db: AsyncSession, update_data: WarehouseUpdateSchema, user_id: int):
+        self.db = db
+        self.update_data = update_data
+        self.user_id = user_id
+
+    async def update_warehouse(self):
+
+        try:
+            find_data = await self.db.get(WarehouseModel, self.update_data.id)
+
+            if find_data:
+                self.check_qty(find_data.qty, find_data.left_over, self.update_data.qty)
+
+                temp = await self.db.execute(
+                    update(WarehouseModel)
+                    .where(WarehouseModel.id == self.update_data.id)
+                    .values(
+                        **self.update_data.model_dump()
+                    )
+                )
+                # print()
+                temp1 = self.db.refresh(temp)
+                print(f'...............///////{temp1}')
+                return {'success':'success'}
+
+            else:
+                logger.error('Warehouse data not found')
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Warehouse not found')
+
+        except HTTPException as ex:
+            raise
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database error during return to stock {ex}")
+            raise HTTPException(500, f"Failed to return to stock 1 {ex}")
+        except Exception as ex:
+            logger.exception(f"Unexpected error {ex}")
+            raise HTTPException(500, f"Internal Server Error 2 {ex}")
+
+
+
+    def check_qty(self, inventor_qty: float, left_over_qty: float, updated_qty: float):
+        print(f'difference is {inventor_qty} {type(left_over_qty)} {updated_qty}')
+        if updated_qty <= 0:
+            logger.error("Updated qty can't be less or equal to 0. Entered {updated_qty}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Updated qty can't be less or equal to 0. Entered {updated_qty}")
+        elif updated_qty < inventor_qty - left_over_qty:
+            logger.error(f"Updated qty can't be less {inventor_qty} - {left_over_qty} = {inventor_qty - left_over_qty}. ")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Updated qty can't be less {inventor_qty} - {left_over_qty} = {inventor_qty - left_over_qty}. ")
+        else:
+            return None
 
 class WarehouseSelectedByIDSRepository:
 
@@ -121,11 +173,23 @@ class WarehouseSelectedByIDSRepository:
                     price=warehouse.price,
                     currency=warehouse.currency,
                     created_at=warehouse.created_at,
-                    project=warehouse.project.project_name if warehouse.project else "N/A",
-                    ordered=warehouse.ordered.username.title() if warehouse.ordered else "N/A",
-                    company=warehouse.company.company_name if warehouse.company else "N/A",
+                    project={
+                        'id': warehouse.project.id,
+                        'project_name': warehouse.project.project_name if warehouse.project else "N/A",
+                    },
+                    ordered={
+                        'id': warehouse.ordered.id,
+                        'ordered_name': warehouse.ordered.username.title() if warehouse.ordered else "N/A",
+                    },
+                    company={
+                        'id': warehouse.company.id,
+                        'company_name': warehouse.company.company_name if warehouse.company else "N/A"
+                    },
+                    material_code={
+                        'id': warehouse.material_code.id,
+                        'description': warehouse.material_code.description if warehouse.material_code else "N/A"
+                    },
                     category=warehouse.category.category_name if warehouse.category else "N/A",
-                    material_code=warehouse.material_code.description if warehouse.material_code else "N/A"
                 )
                 for warehouse in warehouses
             ]
@@ -139,7 +203,6 @@ class WarehouseSelectedByIDSRepository:
         except Exception as ex:
             logger.error(f'Fetch Warehouse By ids error {ex}')
             raise HTTPException(status_code=400, detail=f"Fetch warehouse by ids error {ex}")
-
 
 
 class WarehouseFetchRepository:
@@ -190,11 +253,23 @@ class WarehouseFetchRepository:
                     price=warehouse.price,
                     currency=warehouse.currency,
                     created_at=warehouse.created_at,
-                    project=warehouse.project.project_name if warehouse.project else "N/A",
-                    ordered=warehouse.ordered.username.title() if warehouse.ordered else "N/A",
-                    company=warehouse.company.company_name if warehouse.company else "N/A",
-                    category=warehouse.category.category_name if warehouse.category else "N/A",
-                    material_code=warehouse.material_code.description if warehouse.material_code else "N/A"
+                    project={
+                        'id': warehouse.project.id,
+                        'project_name': warehouse.project.project_name if warehouse.project else "N/A",
+                    },
+                    ordered={
+                        'id':warehouse.ordered.id,
+                        'ordered_name': warehouse.ordered.username.title() if warehouse.ordered else "N/A",
+                    },
+                    company={
+                        'id': warehouse.company.id,
+                        'company_name': warehouse.company.company_name if warehouse.company else "N/A"
+                    },
+                    material_code={
+                        'id': warehouse.material_code.id,
+                        'description': warehouse.material_code.description if warehouse.material_code else "N/A"
+                    },
+                    category=warehouse.category.category_name if warehouse.category else "N/A"
                 )
                 for warehouse in warehouses
             ]

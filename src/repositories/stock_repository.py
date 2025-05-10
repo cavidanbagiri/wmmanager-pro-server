@@ -162,18 +162,19 @@ class StockReturnToWarehouseRepository:
                                         detail=f"Failed to return to stock. Not found error")
             else:
                 logger.error(
-                    f"Failed to return to warehouse. Quantity cant be less than possible area quantity {self.return_data.quantity}")
-                raise HTTPException(status_code=500,
-                                        detail=f"Failed to return to warehouse. Quantity cant be less than possible area quantity {self.return_data.quantity}")
+                    f"Failed to return to warehouse. Quantity cant be less than or equal 0. You entered {return_qty}")
+                raise HTTPException(status_code=400,
+                                        detail=f"Failed to return to warehouse. Quantity cant be less than or equal 0. You entered {return_qty}")
 
         except HTTPException as ex:
+            logger.exception(f"Return stock data error {ex}")
             raise
         except SQLAlchemyError as ex:
             logger.exception(f"Database error during return to stock {ex}")
-            raise HTTPException(500, f"Failed to return to stock 1 {ex}")
+            raise HTTPException(500, f"Failed to return to stock {ex}")
         except Exception as ex:
             logger.exception(f"Unexpected error {ex}")
-            raise HTTPException(500, f"Internal Server Error 2 {ex}")
+            raise HTTPException(500, f"Internal Server Erro {ex}")
 
 
 class StockFetchRepository:

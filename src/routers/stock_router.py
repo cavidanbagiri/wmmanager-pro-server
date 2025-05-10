@@ -19,8 +19,8 @@ logger = setup_logger(__name__, 'stock.log')
 
 router = APIRouter()
 
-
-@router.post('/add_stock_data_list', status_code=201)
+# Tested
+@router.post('/add_stock_data_list', status_code=201, response_model=dict[str, str])
 async def add_stock_list(request: StockListRequest,
                          db: AsyncSession = Depends(get_db),
                          user_id = Depends(project_role_based_authorization)):
@@ -36,8 +36,10 @@ async def add_stock_list(request: StockListRequest,
         logger.error(f'Create Warehouse Error {ex}')
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
 
-
-@router.post('/return_to_warehouse', status_code=201, dependencies=[Depends(project_role_based_authorization)])
+# Tested
+@router.post('/return_to_warehouse', status_code=201,
+             dependencies=[Depends(project_role_based_authorization)],
+             response_model=dict[str, str])
 async def return_to_warehouse(return_data: StockReturnToWarehouseSchema,
                               db: AsyncSession = Depends(get_db)):
 
