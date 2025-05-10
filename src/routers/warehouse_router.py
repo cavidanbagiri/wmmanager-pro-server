@@ -22,7 +22,9 @@ router = APIRouter()
 
 
 # Tested
-@router.post('/create-warehouse_list', status_code=status.HTTP_201_CREATED)
+@router.post('/create-warehouse_list',
+             status_code=status.HTTP_201_CREATED,
+             response_model=dict[str, str])
 async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
                                 db: AsyncSession = Depends(get_db),
                                 user_id = Depends(project_role_based_authorization)):

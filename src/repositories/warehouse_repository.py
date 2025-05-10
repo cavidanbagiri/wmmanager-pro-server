@@ -78,7 +78,7 @@ class WarehouseUpdateRepository:
         self.update_data = update_data
         self.user_id = user_id
 
-    async def update_warehouse(self):
+    async def update_warehouse(self) -> dict[str, str]:
 
         try:
             find_data = await self.db.get(WarehouseModel, self.update_data.id)
@@ -86,16 +86,17 @@ class WarehouseUpdateRepository:
             if find_data:
                 self.check_qty(find_data.qty, find_data.left_over, self.update_data.qty)
 
-                temp = await self.db.execute(
+                temp: dict = self.update_data.__dict__
+
+                if self.update_data.qty != find_data.qty:
+                    temp['left_over'] = self.update_data.qty - (find_data.qty - find_data.left_over)
+
+                await self.db.execute(
                     update(WarehouseModel)
                     .where(WarehouseModel.id == self.update_data.id)
-                    .values(
-                        **self.update_data.model_dump()
-                    )
+                    .values(**temp)
                 )
-                # print()
-                temp1 = self.db.refresh(temp)
-                print(f'...............///////{temp1}')
+                await self.db.commit()
                 return {'success':'success'}
 
             else:
@@ -123,6 +124,7 @@ class WarehouseUpdateRepository:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Updated qty can't be less {inventor_qty} - {left_over_qty} = {inventor_qty - left_over_qty}. ")
         else:
             return None
+
 
 class WarehouseSelectedByIDSRepository:
 
