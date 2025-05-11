@@ -136,47 +136,76 @@ class AreaReturnToStockRepository:
 
     async def return_to_stock(self) -> dict[str, str]:
 
-        return_data: float = self.return_data.quantity
+        # return_data: float = self.return_data.quantity
+        return_quantity = self.return_data.quantity
+
+        if return_quantity <= 0:
+            logger.error("Quantity must be greater than zero.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quantity must be greater than zero."
+            )
 
         try:
-            if return_data > 0:
-                find_data = await self.db.get(AreaModel, self.return_data.id)
-                if find_data:
-                    if return_data > find_data.quantity:
-                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                            detail=f"Failed to return to stock. {return_data} is greater than possible stock")
+            # 1. Lock the AreaModel row for update
+            result = await self.db.execute(
+                select(AreaModel)
+                .where(AreaModel.id == self.return_data.id)
+                .with_for_update()
+            )
+            area = result.scalars().first()
 
-                    # 1 - update area
-                    await self.db.execute(update(AreaModel)
-                                        .where(AreaModel.id == self.return_data.id)
-                                        .values(quantity = AreaModel.quantity - return_data)
-                                    )
-                    # 2 - Update to stock
-                    await self.db.execute(update(StockModel)
-                                          .where(StockModel.id == self.return_data.stock_id)
-                                          .values(left_over = StockModel.left_over + self.return_data.quantity)
-                                          )
-                    await self.db.commit()
-                    return {"detail": "Successfully returned"}
+            if not area:
+                logger.error(f"Area {self.return_data.id} not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Area {self.return_data.id} not found."
+                )
 
-                else:
-                    logger.error("Area Data is not found")
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Failed to return to stock. {self.return_data.id} not found")
+            if return_quantity > area.quantity:
+                logger.error(f"Cannot return more than available quantity in area.")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot return more than available quantity."
+                )
 
-            else:
-                logger.error(f"Failed to return to stock. Quantity cant be less than possible 0")
-                raise HTTPException(status_code=400,
-                                    detail=f"Failed to return to stock. Quantity cant be less than 0")
+            # 2. Lock the StockModel row for update
+            result = await self.db.execute(
+                select(StockModel)
+                .where(StockModel.id == self.return_data.stock_id)
+                .with_for_update()
+            )
+            stock = result.scalars().first()
+
+            if not stock:
+                logger.error(f"Stock {self.return_data.stock_id} not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Stock {self.return_data.stock_id} not found."
+                )
+
+            # 3. Update area
+            area.quantity -= return_quantity
+
+            # 4. Update stock
+            stock.left_over += return_quantity
+
+            # Commit the transaction (this will commit everything done so far)
+            await self.db.commit()
+
+            return {"detail": "Successfully returned"}
 
         except HTTPException as ex:
             raise ex
-        except SQLAlchemyError as ex:
-            logger.exception(f"Database error during return to stock {ex}")
-            raise HTTPException(500, "Failed to return to stock")
-        except Exception as ex:
-            logger.exception(f"Unexpected error {ex}")
-            raise HTTPException(500, "Internal Server Error")
 
+        except SQLAlchemyError as ex:
+            await self.db.rollback()  # Rollback on DB errors
+            logger.exception(f"Database error during return to stock {ex}")
+            raise HTTPException(status_code=500, detail=f"Database error {ex}") from ex
+        except Exception as ex:
+            await self.db.rollback()
+            logger.exception(f"Unexpected error during return to stock {ex}")
+            raise HTTPException(status_code=500, detail=f"Internal Server Error {ex}") from ex
 
 
 class AreaFetchRepository:

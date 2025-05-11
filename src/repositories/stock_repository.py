@@ -36,11 +36,8 @@ class StockAddRepository:
             self.check_project()
 
             async with self.db.begin_nested() if self.db.in_transaction() else self.db.begin():
-
                 warehouse_update_list, ready_stock_data = await self._check_quantity()
-
                 await self._update_model(warehouse_update_list, ready_stock_data)
-
                 return {"detail": "New Stock successfully created"}
 
         except ValueError as ex:
@@ -76,7 +73,6 @@ class StockAddRepository:
                 i.warehouse_id,
                 with_for_update=True
             )
-
 
             if not w_data:
                 raise ValueError(f"Row {row}: Warehouse not found")
@@ -120,6 +116,7 @@ class StockAddRepository:
             raise HTTPException(500, "Internal Server Error")
 
 
+
 class StockReturnToWarehouseRepository:
 
     def __init__(self, db: AsyncSession, return_data: StockReturnToWarehouseSchema):
@@ -127,55 +124,83 @@ class StockReturnToWarehouseRepository:
         self.return_data = return_data
 
     async def return_to_warehouse(self) -> dict[str, str]:
-        return_qty : float = self.return_data.quantity
+        return_qty = self.return_data.quantity
+
+        if return_qty <= 0:
+            logger.error(f"Invalid quantity: {return_qty}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Quantity must be greater than zero. Got: {return_qty}"
+            )
+
         try:
-            if return_qty > 0:
-                # 1 - find data
-                stock_data = await self.db.get(StockModel, self.return_data.id)
-                if stock_data:
-                    if return_qty > stock_data.left_over:
-                        logger.error("")
-                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                            detail=f"Failed to return to warehouse. {return_qty} is greater than possible stock")
-                    # 1 - update stock model, set quantity and left over withdrow
-                    await self.db.execute(
-                        update(StockModel)
-                        .where(StockModel.id == self.return_data.id)
-                        .values(left_over = StockModel.left_over - return_qty,
-                                quantity = StockModel.quantity - return_qty)
-                    )
+            # Lock both rows to prevent concurrent updates
+            result = await self.db.execute(
+                select(StockModel)
+                .where(StockModel.id == self.return_data.id)
+                .with_for_update()
+            )
+            stock = result.scalars().first()
 
-                    # 2 - update warehouse model
-                    await self.db.execute(
-                        update(WarehouseModel)
-                        .where(WarehouseModel.id == self.return_data.warehouse_id)
-                        .values(left_over = WarehouseModel.left_over + return_qty)
-                    )
+            if not stock:
+                logger.error(f"Stock {self.return_data.id} not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Stock not found."
+                )
 
-                    await self.db.commit()
-                    return {"detail":"Successfully Returned"}
+            if return_qty > stock.left_over:
+                logger.error(f"Requested return ({return_qty}) exceeds available left_over ({stock.left_over})")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot return more than available left_over stock."
+                )
 
+            result = await self.db.execute(
+                select(WarehouseModel)
+                .where(WarehouseModel.id == self.return_data.warehouse_id)
+                .with_for_update()
+            )
+            warehouse = result.scalars().first()
 
-                else:
-                    logger.error("Stock Data is not found")
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                        detail=f"Failed to return to stock. Not found error")
-            else:
-                logger.error(
-                    f"Failed to return to warehouse. Quantity cant be less than or equal 0. You entered {return_qty}")
-                raise HTTPException(status_code=400,
-                                        detail=f"Failed to return to warehouse. Quantity cant be less than or equal 0. You entered {return_qty}")
+            if not warehouse:
+                logger.error(f"Warehouse {self.return_data.warehouse_id} not found.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Warehouse not found."
+                )
+
+            # Perform updates
+            await self.db.execute(
+                update(StockModel)
+                .where(StockModel.id == self.return_data.id)
+                .values(
+                    left_over=StockModel.left_over - return_qty,
+                    quantity=StockModel.quantity - return_qty
+                )
+            )
+
+            await self.db.execute(
+                update(WarehouseModel)
+                .where(WarehouseModel.id == self.return_data.warehouse_id)
+                .values(left_over=WarehouseModel.left_over + return_qty)
+            )
+
+            await self.db.commit()
+            return {"detail": "Successfully Returned"}
 
         except HTTPException as ex:
-            logger.exception(f"Return stock data error {ex}")
-            raise
-        except SQLAlchemyError as ex:
-            logger.exception(f"Database error during return to stock {ex}")
-            raise HTTPException(500, f"Failed to return to stock {ex}")
-        except Exception as ex:
-            logger.exception(f"Unexpected error {ex}")
-            raise HTTPException(500, f"Internal Server Erro {ex}")
+            raise ex
 
+        except SQLAlchemyError as ex:
+            await self.db.rollback()
+            logger.exception("Database error during warehouse return")
+            raise HTTPException(status_code=500, detail="Failed to return to warehouse") from ex
+
+        except Exception as ex:
+            await self.db.rollback()
+            logger.exception("Unexpected error during warehouse return")
+            raise HTTPException(status_code=500, detail="Internal Server Error") from ex
 
 class StockFetchRepository:
 
