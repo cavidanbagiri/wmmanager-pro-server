@@ -117,7 +117,6 @@ class StockAddRepository:
             raise HTTPException(500, "Internal Server Error")
 
 
-
 class StockReturnToWarehouseRepository:
 
     def __init__(self, db: AsyncSession, return_data: StockReturnToWarehouseSchema, user_id: int):
@@ -224,7 +223,6 @@ class StockReturnToWarehouseRepository:
         except Exception as ex:
             logger.error(f'Stock log error : {ex}')
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert stock log {ex}')
-
 
 
 class StockFetchRepository:
@@ -354,3 +352,64 @@ class StockFetchSelectedByIDSRepository:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fetch stock list error")
 
 
+class StockGetByIdRepository:
+
+    def __init__(self, db: AsyncSession, item_id: int):
+        self.db = db
+        self.item_id = item_id
+
+    async def get_by_id(self) -> StockListResponse:
+        try:
+            return await self._fetch_data()
+        except HTTPException as ex:
+            raise ex
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database operation failed {ex}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid stock data"
+            )
+        except Exception as ex:
+            logger.error(f'Get stock by id error {ex}')
+            raise HTTPException(status_code=400, detail=f"Get stock by id error {ex}")
+
+    async def _fetch_data(self):
+        query = (
+            select(StockModel)
+            .options(
+                joinedload(StockModel.warehouses)
+                .joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name,OrderedModel.l_name),
+                joinedload(StockModel.warehouses)
+                .joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),
+                joinedload(StockModel.warehouses)
+                .joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
+                joinedload(StockModel.warehouses)
+                .joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),
+                joinedload(StockModel.project)
+            )
+            .where(StockModel.id == self.item_id)
+            .limit(1)
+        )
+
+        result = await self.db.execute(query)
+        stock = result.scalars().first()
+
+        if stock:
+            return self._format_response(stock)
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock id not available")
+
+    def _format_response(self, stock: StockModel):
+        return StockListResponse(
+                id=stock.id,
+                quantity=stock.quantity,
+                left_over=stock.left_over,
+                serial_number=stock.serial_number,
+                material_id=stock.material_id,
+                project=stock.project.project_name,
+                material_name=stock.warehouses.material_name,
+                description=stock.warehouses.material_code.description,
+                category=stock.warehouses.category.category_name,
+                ordered=stock.warehouses.ordered.username,
+                company=stock.warehouses.company.company_name
+            )

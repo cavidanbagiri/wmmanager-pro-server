@@ -17,8 +17,6 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 
 
-
-
 load_dotenv()
 
 # Startup
@@ -41,9 +39,7 @@ async def lifespan(app: FastAPI):
                 ))
         except Exception as ex:
             logger.info(f"Create Initial Admin Error, {ex}")
-
         break
-
     yield
 
 

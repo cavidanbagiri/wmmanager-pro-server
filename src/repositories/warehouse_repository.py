@@ -154,6 +154,168 @@ class WarehouseUpdateRepository:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert warehouse log {ex}')
 
 
+class WarehouseGetByIdRepository:
+
+    def __init__(self, db: AsyncSession, item_id: int):
+        self.db = db
+        self.item_id = item_id
+
+    async def get_by_id(self) -> WarehouseListSelectByIDSResponse:
+        try:
+            return await self._fetch_data()
+
+        except HTTPException as ex:
+            raise ex
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database operation failed {ex}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid warehouse data"
+            )
+        except Exception as ex:
+            logger.error(f'Get warehouse by id error {ex}')
+            raise HTTPException(status_code=400, detail=f"Get warehouse by id error {ex}")
+
+    async def _fetch_data(self):
+        result = await self.db.execute(
+            select(WarehouseModel)
+            .where(WarehouseModel.id == self.item_id)
+            .limit(1)
+            .options(
+                joinedload(WarehouseModel.ordered).load_only(
+                    OrderedModel.f_name,
+                    OrderedModel.m_name,
+                    OrderedModel.l_name
+                ),
+                joinedload(WarehouseModel.category).load_only(
+                    MaterialCategoryModel.category_name
+                ),
+                joinedload(WarehouseModel.project).load_only(
+                    ProjectModel.project_name
+                ),
+                joinedload(WarehouseModel.material_code).load_only(
+                    MaterialCodeModel.description
+                ),
+                joinedload(WarehouseModel.company).load_only(
+                    CompanyModel.company_name
+                )
+            )
+        )
+
+        warehouse = result.scalars().first()
+
+        if warehouse:
+            return self._format_response(warehouse)
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse id not available")
+
+    def _format_response(self, warehouse: WarehouseModel):
+        return WarehouseListSelectByIDSResponse(
+            id=warehouse.id,
+            qty=warehouse.qty,
+            left_over=warehouse.left_over,
+            unit=warehouse.unit,
+            price=warehouse.price,
+            currency=warehouse.currency,
+            created_at=warehouse.created_at,
+            project={
+                'id': warehouse.project.id,
+                'project_name': warehouse.project.project_name if warehouse.project else "N/A",
+            },
+            ordered={
+                'id': warehouse.ordered.id,
+                'ordered_name': warehouse.ordered.username.title() if warehouse.ordered else "N/A",
+            },
+            company={
+                'id': warehouse.company.id,
+                'company_name': warehouse.company.company_name if warehouse.company else "N/A"
+            },
+            material_code={
+                'id': warehouse.material_code.id,
+                'description': warehouse.material_code.description if warehouse.material_code else "N/A"
+            },
+            category=warehouse.category.category_name if warehouse.category else "N/A"
+        )
+
+
+class WarehouseFetchRepository:
+
+    def __init__(self, db: AsyncSession, payload: UserTokenSchema):
+        self.db = db
+        self.payload = payload
+        self.verifier = ProjectVerify(user_payload=payload, model=WarehouseModel)
+
+    async def fetch_warehouse(self):
+
+        try:
+
+            project_filter = self.verifier.get_project_filter()
+
+            result = await self.db.execute(
+                select(WarehouseModel)
+                .where(project_filter if  project_filter is not True else True)
+                .limit(150)
+                .options(
+                    joinedload(WarehouseModel.ordered).load_only(
+                        OrderedModel.f_name,
+                        OrderedModel.m_name,
+                        OrderedModel.l_name
+                    ),
+                    joinedload(WarehouseModel.category).load_only(
+                        MaterialCategoryModel.category_name
+                    ),
+                    joinedload(WarehouseModel.project).load_only(
+                        ProjectModel.project_name
+                    ),
+                    joinedload(WarehouseModel.material_code).load_only(
+                        MaterialCodeModel.description
+                    ),
+                    joinedload(WarehouseModel.company).load_only(
+                        CompanyModel.company_name
+                    )
+                )
+            )
+
+            warehouses = result.scalars().all()
+            return [
+                WarehouseListSelectByIDSResponse(
+                    id=warehouse.id,
+                    qty=warehouse.qty,
+                    left_over=warehouse.left_over,
+                    unit=warehouse.unit,
+                    price=warehouse.price,
+                    currency=warehouse.currency,
+                    created_at=warehouse.created_at,
+                    project={
+                        'id': warehouse.project.id,
+                        'project_name': warehouse.project.project_name if warehouse.project else "N/A",
+                    },
+                    ordered={
+                        'id':warehouse.ordered.id,
+                        'ordered_name': warehouse.ordered.username.title() if warehouse.ordered else "N/A",
+                    },
+                    company={
+                        'id': warehouse.company.id,
+                        'company_name': warehouse.company.company_name if warehouse.company else "N/A"
+                    },
+                    material_code={
+                        'id': warehouse.material_code.id,
+                        'description': warehouse.material_code.description if warehouse.material_code else "N/A"
+                    },
+                    category=warehouse.category.category_name if warehouse.category else "N/A"
+                )
+                for warehouse in warehouses
+            ]
+
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database operation failed {ex}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid warehouse data"
+            )
+        except Exception as ex:
+            logger.error(f'Fetch Warehouse By ids error {ex}')
+            raise HTTPException(status_code=400, detail=f"Fetch warehouse by ids error {ex}")
 
 
 class WarehouseSelectedByIDSRepository:
@@ -236,82 +398,3 @@ class WarehouseSelectedByIDSRepository:
             logger.error(f'Fetch Warehouse By ids error {ex}')
             raise HTTPException(status_code=400, detail=f"Fetch warehouse by ids error {ex}")
 
-
-class WarehouseFetchRepository:
-
-    def __init__(self, db: AsyncSession, payload: UserTokenSchema):
-        self.db = db
-        self.payload = payload
-        self.verifier = ProjectVerify(user_payload=payload, model=WarehouseModel)
-
-    async def fetch_warehouse(self):
-
-        try:
-
-            project_filter = self.verifier.get_project_filter()
-
-            result = await self.db.execute(
-                select(WarehouseModel)
-                .where(project_filter if  project_filter is not True else True)
-                .limit(150)
-                .options(
-                    joinedload(WarehouseModel.ordered).load_only(
-                        OrderedModel.f_name,
-                        OrderedModel.m_name,
-                        OrderedModel.l_name
-                    ),
-                    joinedload(WarehouseModel.category).load_only(
-                        MaterialCategoryModel.category_name
-                    ),
-                    joinedload(WarehouseModel.project).load_only(
-                        ProjectModel.project_name
-                    ),
-                    joinedload(WarehouseModel.material_code).load_only(
-                        MaterialCodeModel.description
-                    ),
-                    joinedload(WarehouseModel.company).load_only(
-                        CompanyModel.company_name
-                    )
-                )
-            )
-
-            warehouses = result.scalars().all()
-            return [
-                WarehouseListSelectByIDSResponse(
-                    id=warehouse.id,
-                    qty=warehouse.qty,
-                    left_over=warehouse.left_over,
-                    unit=warehouse.unit,
-                    price=warehouse.price,
-                    currency=warehouse.currency,
-                    created_at=warehouse.created_at,
-                    project={
-                        'id': warehouse.project.id,
-                        'project_name': warehouse.project.project_name if warehouse.project else "N/A",
-                    },
-                    ordered={
-                        'id':warehouse.ordered.id,
-                        'ordered_name': warehouse.ordered.username.title() if warehouse.ordered else "N/A",
-                    },
-                    company={
-                        'id': warehouse.company.id,
-                        'company_name': warehouse.company.company_name if warehouse.company else "N/A"
-                    },
-                    material_code={
-                        'id': warehouse.material_code.id,
-                        'description': warehouse.material_code.description if warehouse.material_code else "N/A"
-                    },
-                    category=warehouse.category.category_name if warehouse.category else "N/A"
-                )
-                for warehouse in warehouses
-            ]
-
-        except SQLAlchemyError as ex:
-            logger.exception(f"Database operation failed {ex}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid warehouse data"
-            )
-        except Exception as ex:
-            logger.error(f'Fetch Warehouse By ids error {ex}')
-            raise HTTPException(status_code=400, detail=f"Fetch warehouse by ids error {ex}")

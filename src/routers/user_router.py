@@ -1,3 +1,4 @@
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 # from fastapi.dependencies import
@@ -18,7 +19,7 @@ router = APIRouter()
 
 # Tested
 @router.post('/login', status_code=201)
-async def login(response: Response, login_data: UserLoginSchema, db_session: AsyncSession = Depends(get_db)):
+async def login(response: Response, login_data: UserLoginSchema, db_session: Annotated[AsyncSession,  Depends(get_db)]):
 
     repository = UserLoginRepository(db_session)
 

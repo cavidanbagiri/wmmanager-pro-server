@@ -1,3 +1,4 @@
+from typing import Annotated
 
 from fastapi import HTTPException, APIRouter, Depends
 
@@ -21,7 +22,7 @@ router = APIRouter()
 
 # Tested
 @router.post('/register', status_code=201, dependencies=[Depends(verify_admin)])
-async def register(register_data: UserRegisterSchema, db_session: AsyncSession = Depends(get_db)):
+async def register(register_data: UserRegisterSchema, db_session: Annotated[AsyncSession,  Depends(get_db)]):
 
     repository = UserRegisterRepository(db_session)
 
@@ -39,7 +40,7 @@ async def register(register_data: UserRegisterSchema, db_session: AsyncSession =
 
 # Tested
 @router.post('/create-project', status_code=201, dependencies=[Depends(verify_admin)])
-async def create_project(project_data: ProjectCreateSchema, db_session: AsyncSession = Depends(get_db)):
+async def create_project(project_data: ProjectCreateSchema, db_session: Annotated[AsyncSession,  Depends(get_db)]):
     repository = CreateProjectRepository(db_session)
     try:
         data = await repository.create_project(project_data)
@@ -56,7 +57,7 @@ async def create_project(project_data: ProjectCreateSchema, db_session: AsyncSes
 @router.post('/create-group', status_code=201, dependencies=[Depends(verify_admin)])
 async def create_group(
     group_data: GroupCreateSchema,
-    db_session: AsyncSession = Depends(get_db)
+    db_session: Annotated[AsyncSession,  Depends(get_db)]
 ):
     repository = CreateGroupRepository(db_session)
     try:
@@ -72,7 +73,7 @@ async def create_group(
 @router.post('/create-category', status_code=201, dependencies=[Depends(verify_admin)])
 async def create_group(
     category_data: CategoryCreateSchema,
-    db_session: AsyncSession = Depends(get_db)
+    db_session: Annotated[AsyncSession,  Depends(get_db)]
 ):
     repository = CreateCategoryRepository(db_session)
     try:

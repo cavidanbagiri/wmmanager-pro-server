@@ -1,5 +1,5 @@
 
-from typing import List
+from typing import List, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -30,7 +30,7 @@ router = APIRouter()
 @router.get('/fetch-groups', status_code=200,
             dependencies=[Depends(TokenHandler.verify_access_token)],
             response_model=List[GroupResponseSchema])
-async def fetch_groups(db: AsyncSession = Depends(get_db)):
+async def fetch_groups(db: Annotated[AsyncSession,  Depends(get_db)]):
     repository = GroupFetchRepository(db)
     try:
         return await repository.groups()
@@ -44,7 +44,7 @@ async def fetch_groups(db: AsyncSession = Depends(get_db)):
 @router.get('/fetch-categories', status_code=status.HTTP_200_OK,
             dependencies=[Depends(TokenHandler.verify_access_token)],
             response_model=List[CategoryResponseSchema])
-async def fetch_groups(db: AsyncSession = Depends(get_db)):
+async def fetch_groups(db: Annotated[AsyncSession,  Depends(get_db)]):
     repository = CategoryFetchRepository(db)
     try:
         return await repository.fetch_categories()
@@ -60,7 +60,7 @@ async def fetch_groups(db: AsyncSession = Depends(get_db)):
 @router.post('/create-company', status_code=201,
              response_model=CompanyResponseSchema)
 async def create_company(company_data: CompanyCreteSchema,
-                         db: AsyncSession = Depends(get_db),
+                         db: Annotated[AsyncSession,  Depends(get_db)],
                          user_id = Depends(common_role_based_authorization)):
     repository = CompanyCreateRepository(db)
 
@@ -78,7 +78,7 @@ async def create_company(company_data: CompanyCreteSchema,
             dependencies=[Depends(TokenHandler.verify_access_token)],
             response_model=List[CompanyResponseSchema]
             )
-async def fetch_companies(db: AsyncSession = Depends(get_db)):
+async def fetch_companies(db: Annotated[AsyncSession,  Depends(get_db)]):
     repository = CompanyFetchRepository(db)
 
     try:
@@ -95,7 +95,7 @@ async def fetch_companies(db: AsyncSession = Depends(get_db)):
 @router.post('/create-ordered', status_code=201,
              response_model=OrderedResponseSchema)
 async def create_ordered(ordered_data: OrderedCreateSchema,
-                         db: AsyncSession = Depends(get_db),
+                         db: Annotated[AsyncSession,  Depends(get_db)],
                          user_id = Depends(project_role_based_authorization)):
 
     repository = OrderedCreateRepository(db)
@@ -115,7 +115,7 @@ async def create_ordered(ordered_data: OrderedCreateSchema,
 @router.get('/fetch-ordered',
             dependencies=[Depends(TokenHandler.verify_access_token)],
             status_code=201)
-async def fetch_ordered(db: AsyncSession = Depends(get_db)):
+async def fetch_ordered(db: Annotated[AsyncSession,  Depends(get_db)]):
     repository = OrderedFetchRepository(db)
 
     try:
@@ -131,7 +131,7 @@ async def fetch_ordered(db: AsyncSession = Depends(get_db)):
 # Tested
 @router.post('/create-material_code', status_code=201)
 async def create_material_code(material_code_data: MaterialCodeCreateSchema,
-                         db: AsyncSession = Depends(get_db),
+                         db: Annotated[AsyncSession,  Depends(get_db)],
                          user_id = Depends(common_role_based_authorization)):
     repository = MaterialCodeCreateRepository(db)
 
@@ -149,7 +149,7 @@ async def create_material_code(material_code_data: MaterialCodeCreateSchema,
             dependencies = [Depends(TokenHandler.verify_access_token)],
             status_code=200,
             response_model=List[MaterialCodeResponseSchema])
-async def fetch_material_code(db:AsyncSession = Depends(get_db) ):
+async def fetch_material_code(db: Annotated[AsyncSession,  Depends(get_db)]):
     repository = MaterialCodeFetchRepository(db)
     try:
         data = await repository.fetch_material_code()

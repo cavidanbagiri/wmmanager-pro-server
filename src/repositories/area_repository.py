@@ -129,7 +129,6 @@ class AreaAddRepository:
             raise HTTPException(500, "Internal Server Error")
 
 
-
 class AreaReturnToStockRepository:
 
     def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema, user_id: int):
@@ -229,7 +228,6 @@ class AreaReturnToStockRepository:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert stock log {ex}')
 
 
-
 class AreaFetchRepository:
 
     def __init__(self, db: AsyncSession, payload: UserTokenSchema):
@@ -287,3 +285,62 @@ class AreaFetchRepository:
         except Exception as ex:
             logger.error(f"Fetch area list error : {ex}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fetch area list error")
+
+
+
+class AreaGetByIdRepository:
+
+    def __init__(self, db: AsyncSession, item_id: int):
+        self.db = db
+        self.item_id = item_id
+
+    async def get_by_id(self) -> AreaResponseSchema:
+        try:
+            return await self._fetch_data()
+        except HTTPException as ex:
+            raise ex
+        except SQLAlchemyError as ex:
+            logger.exception(f"Database operation failed {ex}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid area data"
+            )
+        except Exception as ex:
+            logger.error(f'Get area by id error {ex}')
+            raise HTTPException(status_code=400, detail=f"Get area by id error {ex}")
+
+    async def _fetch_data(self):
+        data = await self.db.execute(
+            select(AreaModel)
+            .order_by(desc(AreaModel.created_at))
+            .options(
+                joinedload(AreaModel.stock).joinedload(StockModel.warehouses).load_only(WarehouseModel.material_name),
+                joinedload(AreaModel.group).load_only(GroupModel.group_name),
+                joinedload(AreaModel.project).load_only(ProjectModel.project_name)
+            )
+            .where(AreaModel.id == self.item_id)
+            .limit(1)
+        )
+        temp = data.scalars().first()
+
+        if temp:
+            return self._format_response(temp)
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area id not available")
+
+    def _format_response(self, area: AreaModel):
+        return AreaResponseSchema(
+                    id = area.id,
+                    material_name = area.stock.warehouses.material_name,
+                    quantity = area.quantity,
+                    serial_number = area.serial_number,
+                    material_id = area.material_id,
+                    username = area.username.title(),
+                    provide_type = area.provide_type.title(),
+                    project_name = area.project.project_name.upper(),
+                    card_number = area.card_number,
+                    created_at = area.created_at,
+                    group_name = area.group.group_name.title(),
+                    stock_id = area.stock.id,
+                    project_id = area.project.id
+                )

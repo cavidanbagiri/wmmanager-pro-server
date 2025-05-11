@@ -1,9 +1,14 @@
+
+from typing import Annotated
+
+from src.core.types.numeric import UnsignedInt
+
 from fastapi import APIRouter, status, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.repositories.warehouse_repository import WarehouseUpdateRepository
-from src.auth.token_handler import TokenHandler
 from src.database.setup import get_db
+from src.auth.token_handler import TokenHandler
+from src.repositories.warehouse_repository import WarehouseUpdateRepository, WarehouseGetByIdRepository
 
 from src.dependencies.roles_authorization import project_role_based_authorization
 from src.repositories.warehouse_repository import (WarehouseCreateRepository,
@@ -26,7 +31,7 @@ router = APIRouter()
              status_code=status.HTTP_201_CREATED,
              response_model=dict[str, str])
 async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
-                                db: AsyncSession = Depends(get_db),
+                                db: Annotated[AsyncSession,  Depends(get_db)],
                                 user_id = Depends(project_role_based_authorization)):
 
     repository = WarehouseCreateRepository(db, warehouse_list, user_id)
@@ -45,7 +50,7 @@ async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
             status_code=status.HTTP_202_ACCEPTED,
             response_model=dict[str, str])
 async def update_warehouse_list(update_data: WarehouseUpdateSchema,
-                                db: AsyncSession = Depends(get_db),
+                                db: Annotated[AsyncSession,  Depends(get_db)],
                                 user_id = Depends(project_role_based_authorization)):
 
     repository = WarehouseUpdateRepository(db, update_data, user_id)
@@ -61,11 +66,30 @@ async def update_warehouse_list(update_data: WarehouseUpdateSchema,
 
 
 
+@router.get('/fetch-warehouse_list',
+             status_code=200,
+             response_model=list[WarehouseListSelectByIDSResponse])
+async def fetch_warehouse(db: Annotated[AsyncSession,  Depends(get_db)],
+                            payload:UserTokenSchema = Depends(TokenHandler.verify_access_token)):
+
+    repository = WarehouseFetchRepository(db, payload)
+
+    try:
+        data = await repository.fetch_warehouse()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Warehouse list error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+
 @router.post('/fetch-selected-ids', status_code=200,
              response_model=list[WarehouseListSelectByIDSResponse])
 async def fetch_selected_ids(request: WarehouseListSelectByIDS,
-                             payload:UserTokenSchema = Depends(TokenHandler.verify_access_token),
-                             db: AsyncSession = Depends(get_db)):
+                             db: Annotated[AsyncSession,  Depends(get_db)],
+                             payload:UserTokenSchema = Depends(TokenHandler.verify_access_token)):
 
     repository = WarehouseSelectedByIDSRepository(db, payload)
     try:
@@ -79,21 +103,39 @@ async def fetch_selected_ids(request: WarehouseListSelectByIDS,
 
 
 
-
-@router.get('/fetch-warehouse_list',
-             status_code=200,
-             response_model=list[WarehouseListSelectByIDSResponse])
-async def fetch_warehouse(payload:UserTokenSchema = Depends(TokenHandler.verify_access_token),
-                          db: AsyncSession = Depends(get_db)):
-
-    repository = WarehouseFetchRepository(db, payload)
-
+@router.get('/{item_id}',
+            dependencies=[Depends(TokenHandler.verify_access_token)],
+            status_code=status.HTTP_200_OK,
+            response_model=WarehouseListSelectByIDSResponse
+            )
+async def get_by_id(item_id: UnsignedInt,
+                              db: Annotated[AsyncSession,  Depends(get_db)]):
+    repository = WarehouseGetByIdRepository(db, item_id)
     try:
-        data = await repository.fetch_warehouse()
+        data = await repository.get_by_id()
         return data
     except HTTPException as ex:
         raise ex
     except Exception as ex:
-        logger.error(f"Fetch Warehouse list error {ex}")
+        logger.error(f"Fetch Selected IDS error {ex}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
