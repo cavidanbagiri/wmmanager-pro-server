@@ -1,6 +1,6 @@
 from fastapi import HTTPException, status
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from src.models.common_models import CompanyModel
 from src.models.ordered_model import OrderedModel
 from src.models.warehouse_model import WarehouseModel, MaterialCategoryModel, MaterialCodeModel
 from src.schemas.user_schemas import UserTokenSchema
+from src.models.logging_models import LogUpdateWarehouseQtyModel
 from src.schemas.warehouse_schema import WarehouseListCreateSchema, WarehouseListSelectByIDSResponse
 
 from src.logging_config import setup_logger
@@ -80,8 +81,21 @@ class WarehouseUpdateRepository:
 
     async def update_warehouse(self) -> dict[str, str]:
 
+        if self.update_data.qty <= 0:
+            logger.error(f"Invalid quantity: {self.update_data.qty}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Quantity must be greater than zero. Got: {self.update_data.qty}"
+            )
+
         try:
-            find_data = await self.db.get(WarehouseModel, self.update_data.id)
+
+            result = await self.db.execute(
+                select(WarehouseModel)
+                .where(WarehouseModel.id == self.update_data.id)
+                .with_for_update()
+            )
+            find_data = result.scalars().first()
 
             if find_data:
                 self.check_qty(find_data.qty, find_data.left_over, self.update_data.qty)
@@ -90,6 +104,7 @@ class WarehouseUpdateRepository:
 
                 if self.update_data.qty != find_data.qty:
                     temp['left_over'] = self.update_data.qty - (find_data.qty - find_data.left_over)
+                    await self.insert_warehouse_update_log(find_data)
 
                 await self.db.execute(
                     update(WarehouseModel)
@@ -97,7 +112,7 @@ class WarehouseUpdateRepository:
                     .values(**temp)
                 )
                 await self.db.commit()
-                return {'success':'success'}
+                return {'detail':'Successfully updated'}
 
             else:
                 logger.error('Warehouse data not found')
@@ -113,17 +128,32 @@ class WarehouseUpdateRepository:
             raise HTTPException(500, f"Internal Server Error 2 {ex}")
 
 
-
     def check_qty(self, inventor_qty: float, left_over_qty: float, updated_qty: float):
         print(f'difference is {inventor_qty} {type(left_over_qty)} {updated_qty}')
-        if updated_qty <= 0:
-            logger.error("Updated qty can't be less or equal to 0. Entered {updated_qty}")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Updated qty can't be less or equal to 0. Entered {updated_qty}")
-        elif updated_qty < inventor_qty - left_over_qty:
+        if updated_qty < inventor_qty - left_over_qty:
             logger.error(f"Updated qty can't be less {inventor_qty} - {left_over_qty} = {inventor_qty - left_over_qty}. ")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Updated qty can't be less {inventor_qty} - {left_over_qty} = {inventor_qty - left_over_qty}. ")
         else:
             return None
+
+    async def insert_warehouse_update_log(self, finded_data: WarehouseModel):
+        try:
+            await self.db.execute(
+                insert(LogUpdateWarehouseQtyModel).values(
+                    movement_type = 'update qty',
+                    old_quantity = finded_data.qty,
+                    old_left_over = finded_data.left_over,
+                    new_quantity = self.update_data.qty,
+                    new_left_over = self.update_data.qty - (finded_data.qty - finded_data.left_over),
+                    warehouse_id = finded_data.id,
+                    created_by_id = self.user_id
+                )
+            )
+        except Exception as ex:
+            logger.error(f'Warehouse log error : {ex}')
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert warehouse log {ex}')
+
+
 
 
 class WarehouseSelectedByIDSRepository:

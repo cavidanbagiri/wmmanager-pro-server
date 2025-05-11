@@ -42,10 +42,13 @@ async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
 
 
 @router.post('/update-warehouse_list',
-            status_code=status.HTTP_202_ACCEPTED)
+            status_code=status.HTTP_202_ACCEPTED,
+            response_model=dict[str, str])
 async def update_warehouse_list(update_data: WarehouseUpdateSchema,
-                                db: AsyncSession = Depends(get_db)):
-    repository = WarehouseUpdateRepository(db, update_data, user_id = Depends(project_role_based_authorization))
+                                db: AsyncSession = Depends(get_db),
+                                user_id = Depends(project_role_based_authorization)):
+
+    repository = WarehouseUpdateRepository(db, update_data, user_id)
     try:
         data = await repository.update_warehouse()
         return data

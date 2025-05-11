@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
-from src.alembic import context
+from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -18,13 +18,8 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-# from srcc.models.base_model import Base
-#from srcc.models.base_model import Base
 #target_metadata = Base.metadata
-#from srcc.models.user_models import UserModel, TokenModel
-#from srcc.models.common_models import ProjectModel, CompanyModel
-#from srcc.models.ordered_model import OrderedModel, GroupModel
-#from srcc.models.warehouse_model import WarehouseModel, MaterialCodeModel, MaterialCategoryModel
+
 
 target_metadata = None
 
