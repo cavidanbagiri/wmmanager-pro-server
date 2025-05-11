@@ -1,7 +1,8 @@
+
 from typing import List, Tuple
 
 
-from sqlalchemy import update, select, desc
+from sqlalchemy import update, select, desc, insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from src.models.area_model import AreaModel
 from src.models.ordered_model import GroupModel
 from src.models.stock_models import StockModel
 from src.models.warehouse_model import WarehouseModel
+from src.models.logging_models import LogAreaMovementModel
 from src.schemas.area_schemas import AreaListAddSchema, AreaAddSchema, AreaResponseSchema, AreaReturnStockSchema
 
 from src.logging_config import setup_logger
@@ -130,9 +132,10 @@ class AreaAddRepository:
 
 class AreaReturnToStockRepository:
 
-    def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema):
+    def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema, user_id: int):
         self.db = db
         self.return_data = return_data
+        self.user_id = user_id
 
     async def return_to_stock(self) -> dict[str, str]:
 
@@ -184,6 +187,8 @@ class AreaReturnToStockRepository:
                     detail=f"Stock {self.return_data.stock_id} not found."
                 )
 
+            await self.insert_area_movement_log(area)
+
             # 3. Update area
             area.quantity -= return_quantity
 
@@ -206,6 +211,23 @@ class AreaReturnToStockRepository:
             await self.db.rollback()
             logger.exception(f"Unexpected error during return to stock {ex}")
             raise HTTPException(status_code=500, detail=f"Internal Server Error {ex}") from ex
+
+    async def insert_area_movement_log(self, finded_data: AreaModel):
+        try:
+            await self.db.execute(
+                insert(LogAreaMovementModel).values(
+                    movement_type = 'return to stock',
+                    old_quantity = finded_data.quantity,
+                    return_quantity = self.return_data.quantity,
+                    area_id = finded_data.id,
+                    stock_id = self.return_data.stock_id,
+                    created_by_id = self.user_id
+                )
+            )
+        except Exception as ex:
+            logger.error(f'Stock log error : {ex}')
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert stock log {ex}')
+
 
 
 class AreaFetchRepository:

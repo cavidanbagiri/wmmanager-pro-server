@@ -37,13 +37,14 @@ async def add_stock_list(request: StockListRequest,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
 
 # Tested
-@router.post('/return_to_warehouse', status_code=201,
-             dependencies=[Depends(project_role_based_authorization)],
+@router.post('/return_to_warehouse',
+             status_code=201,
              response_model=dict[str, str])
 async def return_to_warehouse(return_data: StockReturnToWarehouseSchema,
-                              db: AsyncSession = Depends(get_db)):
+                              db: AsyncSession = Depends(get_db),
+                              user_id: int = Depends(project_role_based_authorization)):
 
-    repository = StockReturnToWarehouseRepository(db, return_data)
+    repository = StockReturnToWarehouseRepository(db, return_data, user_id)
 
     try:
         data = await repository.return_to_warehouse()

@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update, select
+from sqlalchemy import update, select, insert
 from sqlalchemy.orm import joinedload
 
 from src.schemas.stock_schema import StockReturnToWarehouseSchema
@@ -14,6 +14,7 @@ from src.models.common_models import CompanyModel
 from src.models.ordered_model import OrderedModel
 from src.models.stock_models import StockModel
 from src.models.warehouse_model import WarehouseModel, MaterialCategoryModel, MaterialCodeModel
+from src.models.logging_models import LogStockMovementModel
 from src.schemas.stock_schema import StockAddSchema, StockListRequest, StockListResponse
 
 from src.logging_config import setup_logger
@@ -119,9 +120,10 @@ class StockAddRepository:
 
 class StockReturnToWarehouseRepository:
 
-    def __init__(self, db: AsyncSession, return_data: StockReturnToWarehouseSchema):
+    def __init__(self, db: AsyncSession, return_data: StockReturnToWarehouseSchema, user_id: int):
         self.db = db
         self.return_data = return_data
+        self.user_id = user_id
 
     async def return_to_warehouse(self) -> dict[str, str]:
         return_qty = self.return_data.quantity
@@ -170,6 +172,9 @@ class StockReturnToWarehouseRepository:
                     detail="Warehouse not found."
                 )
 
+            # Create a new stock
+            await self.insert_stock_movement_log(finded_data=stock)
+
             # Perform updates
             await self.db.execute(
                 update(StockModel)
@@ -201,6 +206,26 @@ class StockReturnToWarehouseRepository:
             await self.db.rollback()
             logger.exception("Unexpected error during warehouse return")
             raise HTTPException(status_code=500, detail="Internal Server Error") from ex
+
+    async def insert_stock_movement_log(self, finded_data: StockModel):
+        try:
+            await self.db.execute(
+                insert(LogStockMovementModel).values(
+                    movement_type = 'return to warehouse',
+                    old_quantity = finded_data.quantity,
+                    old_left_over = finded_data.left_over,
+                    return_quantity = self.return_data.quantity,
+                    new_left_over = finded_data.left_over - self.return_data.quantity,
+                    stock_id = finded_data.id,
+                    warehouse_id = self.return_data.warehouse_id,
+                    created_by_id = self.user_id
+                )
+            )
+        except Exception as ex:
+            logger.error(f'Stock log error : {ex}')
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'Can insert stock log {ex}')
+
+
 
 class StockFetchRepository:
 

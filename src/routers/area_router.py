@@ -36,11 +36,11 @@ async def add_area(area_data: AreaListAddSchema,
 
 # Tested
 @router.post('/return_to_stock',
-             dependencies=[Depends(project_role_based_authorization)],
              status_code = status.HTTP_201_CREATED)
 async def return_to_stock(return_data: AreaReturnStockSchema,
-                          db: AsyncSession = Depends(get_db),):
-    repository = AreaReturnToStockRepository(db, return_data)
+                          db: AsyncSession = Depends(get_db),
+                          user_id: int = Depends(project_role_based_authorization)):
+    repository = AreaReturnToStockRepository(db, return_data, user_id)
 
     try:
         data = await repository.return_to_stock()
