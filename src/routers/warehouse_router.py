@@ -45,7 +45,7 @@ async def create_warehouse_list(warehouse_list: WarehouseListCreateSchema,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
 
 
-
+# Tested
 @router.post('/update-warehouse_list',
             status_code=status.HTTP_202_ACCEPTED,
             response_model=dict[str, str])
@@ -65,7 +65,7 @@ async def update_warehouse_list(update_data: WarehouseUpdateSchema,
 
 
 
-
+# Tested
 @router.get('/fetch-warehouse_list',
              status_code=200,
              response_model=list[WarehouseListSelectByIDSResponse])
@@ -84,7 +84,7 @@ async def fetch_warehouse(db: Annotated[AsyncSession,  Depends(get_db)],
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-
+# Tested
 @router.post('/fetch-selected-ids', status_code=200,
              response_model=list[WarehouseListSelectByIDSResponse])
 async def fetch_selected_ids(request: WarehouseListSelectByIDS,
@@ -102,15 +102,15 @@ async def fetch_selected_ids(request: WarehouseListSelectByIDS,
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-
+# Tested
 @router.get('/{item_id}',
-            dependencies=[Depends(TokenHandler.verify_access_token)],
             status_code=status.HTTP_200_OK,
             response_model=WarehouseListSelectByIDSResponse
             )
 async def get_by_id(item_id: UnsignedInt,
-                              db: Annotated[AsyncSession,  Depends(get_db)]):
-    repository = WarehouseGetByIdRepository(db, item_id)
+                    user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                    db: Annotated[AsyncSession,  Depends(get_db)]):
+    repository = WarehouseGetByIdRepository(db, item_id, user_payload)
     try:
         data = await repository.get_by_id()
         return data

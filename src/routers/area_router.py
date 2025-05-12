@@ -40,9 +40,10 @@ async def add_area(area_data: AreaListAddSchema,
 @router.post('/return_to_stock',
              status_code = status.HTTP_201_CREATED)
 async def return_to_stock(return_data: AreaReturnStockSchema,
-                          db: Annotated[AsyncSession,  Depends(get_db)],
-                          user_id: int = Depends(project_role_based_authorization)):
-    repository = AreaReturnToStockRepository(db, return_data, user_id)
+                          user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                          db: Annotated[AsyncSession,  Depends(get_db)]
+                          ):
+    repository = AreaReturnToStockRepository(db, return_data, int(user_payload.get('sub')), user_payload)
 
     try:
         data = await repository.return_to_stock()
@@ -72,15 +73,15 @@ async def fetch_area(db: Annotated[AsyncSession,  Depends(get_db)],
         return HTTPException(status_code=500, detail="Internal server error")
 
 
-
+# Tested
 @router.get('/{item_id}',
-            dependencies=[Depends(TokenHandler.verify_access_token)],
             status_code=status.HTTP_200_OK,
             response_model=AreaResponseSchema
             )
 async def get_stock_by_id(item_id: UnsignedInt,
+                                user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
                               db: Annotated[AsyncSession,  Depends(get_db)]):
-    repository = AreaGetByIdRepository(db, item_id)
+    repository = AreaGetByIdRepository(db, item_id, user_payload)
     try:
         data = await repository.get_by_id()
         return data

@@ -156,9 +156,10 @@ class WarehouseUpdateRepository:
 
 class WarehouseGetByIdRepository:
 
-    def __init__(self, db: AsyncSession, item_id: int):
+    def __init__(self, db: AsyncSession, item_id: int, user_payload: UserTokenSchema):
         self.db = db
         self.item_id = item_id
+        self.verifier = ProjectVerify(user_payload=user_payload, model=WarehouseModel)
 
     async def get_by_id(self) -> WarehouseListSelectByIDSResponse:
         try:
@@ -177,9 +178,13 @@ class WarehouseGetByIdRepository:
             raise HTTPException(status_code=400, detail=f"Get warehouse by id error {ex}")
 
     async def _fetch_data(self):
+
+        project_filter = self.verifier.get_project_filter()
+
         result = await self.db.execute(
             select(WarehouseModel)
-            .where(WarehouseModel.id == self.item_id)
+            .where(WarehouseModel.id == self.item_id,
+                   project_filter if  project_filter is not True else True)
             .limit(1)
             .options(
                 joinedload(WarehouseModel.ordered).load_only(
@@ -207,7 +212,7 @@ class WarehouseGetByIdRepository:
         if warehouse:
             return self._format_response(warehouse)
         else:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse id not available")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse id not found")
 
     def _format_response(self, warehouse: WarehouseModel):
         return WarehouseListSelectByIDSResponse(

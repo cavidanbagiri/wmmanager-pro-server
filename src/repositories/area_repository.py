@@ -85,7 +85,7 @@ class AreaAddRepository:
 
             # 2 - Check there is a data or not
             if not s_data:
-                raise ValueError(f"Row {idx}: Warehouse not found")
+                raise ValueError(f"Row {idx}: Area not found")
 
             # 3 - Check stock model left over
             if s_data.left_over < item.quantity:
@@ -131,14 +131,14 @@ class AreaAddRepository:
 
 class AreaReturnToStockRepository:
 
-    def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema, user_id: int):
+    def __init__(self, db: AsyncSession, return_data:AreaReturnStockSchema, user_id: int, user_payload: UserTokenSchema):
         self.db = db
         self.return_data = return_data
         self.user_id = user_id
+        self.verifier = ProjectVerify(user_payload=user_payload, model=AreaModel)
 
     async def return_to_stock(self) -> dict[str, str]:
 
-        # return_data: float = self.return_data.quantity
         return_quantity = self.return_data.quantity
 
         if return_quantity <= 0:
@@ -149,10 +149,14 @@ class AreaReturnToStockRepository:
             )
 
         try:
+
+            project_filter = self.verifier.get_project_filter()
+
             # 1. Lock the AreaModel row for update
             result = await self.db.execute(
                 select(AreaModel)
-                .where(AreaModel.id == self.return_data.id)
+                .where(AreaModel.id == self.return_data.id,
+                       project_filter if  project_filter is not True else True)
                 .with_for_update()
             )
             area = result.scalars().first()
@@ -188,13 +192,10 @@ class AreaReturnToStockRepository:
 
             await self.insert_area_movement_log(area)
 
-            # 3. Update area
             area.quantity -= return_quantity
 
-            # 4. Update stock
             stock.left_over += return_quantity
 
-            # Commit the transaction (this will commit everything done so far)
             await self.db.commit()
 
             return {"detail": "Successfully returned"}
@@ -287,12 +288,12 @@ class AreaFetchRepository:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fetch area list error")
 
 
-
 class AreaGetByIdRepository:
 
-    def __init__(self, db: AsyncSession, item_id: int):
+    def __init__(self, db: AsyncSession, item_id: int, user_payload: UserTokenSchema):
         self.db = db
         self.item_id = item_id
+        self.verifier = ProjectVerify(user_payload=user_payload, model=AreaModel)
 
     async def get_by_id(self) -> AreaResponseSchema:
         try:
@@ -310,6 +311,9 @@ class AreaGetByIdRepository:
             raise HTTPException(status_code=400, detail=f"Get area by id error {ex}")
 
     async def _fetch_data(self):
+
+        project_filter = self.verifier.get_project_filter()
+
         data = await self.db.execute(
             select(AreaModel)
             .order_by(desc(AreaModel.created_at))
@@ -318,7 +322,7 @@ class AreaGetByIdRepository:
                 joinedload(AreaModel.group).load_only(GroupModel.group_name),
                 joinedload(AreaModel.project).load_only(ProjectModel.project_name)
             )
-            .where(AreaModel.id == self.item_id)
+            .where(AreaModel.id == self.item_id, project_filter if  project_filter is not True else True)
             .limit(1)
         )
         temp = data.scalars().first()

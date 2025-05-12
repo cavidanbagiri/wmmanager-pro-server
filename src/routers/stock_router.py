@@ -57,7 +57,7 @@ async def return_to_warehouse(return_data: StockReturnToWarehouseSchema,
         logger.error(f'Return Warehouse Error {ex}')
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
 
-
+# Tested
 @router.get('/fetch-stock_list', status_code=200,
             response_model=List[StockListResponse])
 async def fetch_stock_list(db: Annotated[AsyncSession,  Depends(get_db)],
@@ -75,7 +75,7 @@ async def fetch_stock_list(db: Annotated[AsyncSession,  Depends(get_db)],
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-
+# Tested
 @router.post('/fetch-selected-ids', status_code=200,)
 async def fetch_selected_ids(request: StockListSelectByIDS,
                              db: Annotated[AsyncSession,  Depends(get_db)],
@@ -93,15 +93,16 @@ async def fetch_selected_ids(request: StockListSelectByIDS,
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-
+# Tested
 @router.get('/{item_id}',
-            dependencies=[Depends(TokenHandler.verify_access_token)],
             status_code=status.HTTP_200_OK,
             response_model=StockListResponse
             )
 async def get_by_id(item_id: UnsignedInt,
-                              db: Annotated[AsyncSession,  Depends(get_db)]):
-    repository = StockGetByIdRepository(db, item_id)
+                            user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                            db: Annotated[AsyncSession,  Depends(get_db)]
+                    ):
+    repository = StockGetByIdRepository(db, item_id, user_payload)
     try:
         data = await repository.get_by_id()
         return data

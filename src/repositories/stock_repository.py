@@ -354,9 +354,10 @@ class StockFetchSelectedByIDSRepository:
 
 class StockGetByIdRepository:
 
-    def __init__(self, db: AsyncSession, item_id: int):
+    def __init__(self, db: AsyncSession, item_id: int, user_payload: UserTokenSchema):
         self.db = db
         self.item_id = item_id
+        self.verifier = ProjectVerify(user_payload=user_payload, model=StockModel)
 
     async def get_by_id(self) -> StockListResponse:
         try:
@@ -374,6 +375,7 @@ class StockGetByIdRepository:
             raise HTTPException(status_code=400, detail=f"Get stock by id error {ex}")
 
     async def _fetch_data(self):
+        project_filter = self.verifier.get_project_filter()
         query = (
             select(StockModel)
             .options(
@@ -387,7 +389,8 @@ class StockGetByIdRepository:
                 .joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),
                 joinedload(StockModel.project)
             )
-            .where(StockModel.id == self.item_id)
+            .where(StockModel.id == self.item_id,
+                   project_filter if  project_filter is not True else True)
             .limit(1)
         )
 
