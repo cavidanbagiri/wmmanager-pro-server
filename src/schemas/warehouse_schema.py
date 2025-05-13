@@ -55,7 +55,7 @@ class WarehouseListSelectByIDS(BaseModel):
 
     ids: list[int]
 
-class WarehouseListSelectByIDSResponse(BaseModel):
+class WarehouseStandartFetchResponseSchema(BaseModel):
     id:int
     qty: float
     left_over: float
@@ -68,3 +68,23 @@ class WarehouseListSelectByIDSResponse(BaseModel):
     company: dict
     material_code: dict
     category: str
+
+
+class WarehouseFilterFieldSchema(BaseModel):
+    material_name: str | None = None
+    qty: float | None = None
+    unit: Units | None = None
+    price: float | None = None
+    currency: str | None = None
+    category_id: int | None = None
+    po_num: str | None = None
+    doc_num: str | None = None
+    material_code_id: int | None = None
+    project_id: int | None = None
+    ordered_id: int | None = None
+    company_id: int | None = None
+    created_at: datetime | None = None
+
+class WarehouseFilterSchema(BaseModel):
+    project_id: int
+    filter_data: WarehouseFilterFieldSchema

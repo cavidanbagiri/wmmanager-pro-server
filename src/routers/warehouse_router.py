@@ -8,16 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.setup import get_db
 from src.auth.token_handler import TokenHandler
-from src.repositories.warehouse_repository import WarehouseUpdateRepository, WarehouseGetByIdRepository
 
 from src.dependencies.roles_authorization import project_role_based_authorization
 from src.repositories.warehouse_repository import (WarehouseCreateRepository,
                                                    WarehouseSelectedByIDSRepository,
-                                                   WarehouseFetchRepository)
+                                                   WarehouseFetchRepository,
+                                                   WarehouseUpdateRepository,
+                                                   WarehouseGetByIdRepository,
+                                                   WarehouseFilterRepository)
+
 from src.schemas.user_schemas import UserTokenSchema
 
 from src.schemas.warehouse_schema import WarehouseListCreateSchema, WarehouseListSelectByIDS, \
-    WarehouseListSelectByIDSResponse, WarehouseUpdateSchema
+    WarehouseStandartFetchResponseSchema, WarehouseUpdateSchema, WarehouseFilterSchema
 
 from src.logging_config import setup_logger
 logger = setup_logger(__name__, 'warehouse.log')
@@ -67,8 +70,8 @@ async def update_warehouse_list(update_data: WarehouseUpdateSchema,
 
 # Tested
 @router.get('/fetch-warehouse_list',
-             status_code=200,
-             response_model=list[WarehouseListSelectByIDSResponse])
+            status_code=200,
+            response_model=list[WarehouseStandartFetchResponseSchema])
 async def fetch_warehouse(db: Annotated[AsyncSession,  Depends(get_db)],
                             payload:UserTokenSchema = Depends(TokenHandler.verify_access_token)):
 
@@ -86,7 +89,7 @@ async def fetch_warehouse(db: Annotated[AsyncSession,  Depends(get_db)],
 
 # Tested
 @router.post('/fetch-selected-ids', status_code=200,
-             response_model=list[WarehouseListSelectByIDSResponse])
+             response_model=list[WarehouseStandartFetchResponseSchema])
 async def fetch_selected_ids(request: WarehouseListSelectByIDS,
                              db: Annotated[AsyncSession,  Depends(get_db)],
                              payload:UserTokenSchema = Depends(TokenHandler.verify_access_token)):
@@ -105,7 +108,7 @@ async def fetch_selected_ids(request: WarehouseListSelectByIDS,
 # Tested
 @router.get('/{item_id}',
             status_code=status.HTTP_200_OK,
-            response_model=WarehouseListSelectByIDSResponse
+            response_model=WarehouseStandartFetchResponseSchema
             )
 async def get_by_id(item_id: UnsignedInt,
                     user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
@@ -123,9 +126,20 @@ async def get_by_id(item_id: UnsignedInt,
 
 
 
+@router.post('/filter', status_code=status.HTTP_200_OK)
+async def filter(filter_data: WarehouseFilterSchema,
+                 user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                 db: Annotated[AsyncSession,  Depends(get_db)]):
 
-
-
+    try:
+        repository = WarehouseFilterRepository(db, filter_data, user_payload)
+        data = await repository.filter()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Selected IDS error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 
