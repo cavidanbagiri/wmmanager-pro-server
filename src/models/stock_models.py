@@ -22,7 +22,7 @@ class StockModel(Base):
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
 
-    warehouses = relationship("WarehouseModel")
+    warehouses = relationship("WarehouseModel", back_populates="stocks")
     project = relationship("ProjectModel")
 
     def __str__(self):

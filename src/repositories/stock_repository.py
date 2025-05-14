@@ -2,25 +2,88 @@
 from typing import List, Tuple
 
 from fastapi import HTTPException, status
+from sqlalchemy.dialects import postgresql
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update, select, insert
-from sqlalchemy.orm import joinedload
+from sqlalchemy import update, select, insert, func
+from sqlalchemy.orm import joinedload, aliased
 
+from src.schemas.stock_schema import StockFilterSchema
 from src.schemas.stock_schema import StockReturnToWarehouseSchema
 from src.dependencies.verify_project import ProjectVerify
-from src.models.common_models import CompanyModel
+from src.models.common_models import CompanyModel, ProjectModel
 from src.models.ordered_model import OrderedModel
 from src.models.stock_models import StockModel
 from src.models.warehouse_model import WarehouseModel, MaterialCategoryModel, MaterialCodeModel
 from src.models.logging_models import LogStockMovementModel
-from src.schemas.stock_schema import StockAddSchema, StockListRequest, StockListResponse
+from src.schemas.stock_schema import StockAddSchema, StockListRequest, StockStandardFetchResponse
 
 from src.logging_config import setup_logger
 from src.schemas.user_schemas import UserTokenSchema
 
 logger = setup_logger(__name__, 'stock.log')
+
+
+class StockStandardResponse:
+
+    @staticmethod
+    def format_response(model: list[StockModel]):
+        return [
+            StockStandardFetchResponse(
+                id=i.id,
+                quantity=i.quantity,
+                left_over=i.left_over,
+                serial_number=i.serial_number,
+                material_id=i.material_id,
+                material_name=i.warehouses.material_name,
+                material_code={
+                    "id": i.warehouses.material_code.id,
+                    "description": i.warehouses.material_code.description
+                },
+                category={
+                    "id": i.warehouses.category.id,
+                    "category": i.warehouses.category.category_name
+                },
+                ordered={
+                    "id": i.warehouses.ordered.id,
+                    "ordered": i.warehouses.ordered.username
+                },
+                company={
+                    "id": i.warehouses.company.id,
+                    "company": i.warehouses.company.company_name
+                },
+                project={
+                    "id": i.warehouses.project.id,
+                    "company": i.warehouses.project.project_name
+                }
+            )
+            for i in model
+        ]
+
+
+class StockFetchQuery:
+
+    @staticmethod
+    async def fetch_query(session: AsyncSession, limit: int, *where_clauses):
+        filters = [ i for i in where_clauses if i is not None and i is not True ]
+
+        stmt = select(StockModel)
+
+        stmt = stmt.where(*filters)
+
+        stmt = stmt.options(
+            joinedload(StockModel.warehouses)
+            .options(
+                joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name, OrderedModel.l_name),
+                joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),
+                joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
+                joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),
+                joinedload(WarehouseModel.project).load_only(ProjectModel.project_name),
+            )
+        )
+
+        return await session.execute(stmt)
 
 
 class StockAddRepository:
@@ -232,59 +295,31 @@ class StockFetchRepository:
         self.payload = payload
         self.verifier = ProjectVerify(user_payload=payload, model=StockModel)
 
-    async def fetch_stock_list(self) -> List[StockListResponse]:
+    async def fetch_stock_list(self) -> List[StockStandardFetchResponse]:
 
         try:
 
             project_verify = self.verifier.get_project_filter()
 
-            query = (
-                select(StockModel)
-                .options(
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name, OrderedModel.l_name),
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),  # Load category
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),  # Load material_code
-                    joinedload(StockModel.project)
-                )
-                .where(project_verify if project_verify is not True else True)
-                .limit(150)
-            )
-
-            result = await self.db.execute(query)
+            filters = []
+            if project_verify is not True:
+                filters.append(project_verify)
+            result = await StockFetchQuery.fetch_query(self.db, 150, *filters)
             stocks = result.unique().scalars().all()
 
-            return [
-                StockListResponse(
-                    id=i.id,
-                    quantity=i.quantity,
-                    left_over=i.left_over,
-                    serial_number=i.serial_number,
-                    material_id=i.material_id,
-                    project=i.project.project_name,
-                    material_name=i.warehouses.material_name,
-                    description=i.warehouses.material_code.description,
-                    category=i.warehouses.category.category_name,
-                    ordered=i.warehouses.ordered.username,
-                    company=i.warehouses.company.company_name
-                )
-                for i in stocks
-            ]
+            return StockStandardResponse.format_response(list(stocks))
+
 
         except SQLAlchemyError as ex:
             logger.exception(f"Database operation failed {ex}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid warehouse data"
+                detail=f"Invalid warehouse data {ex}"
             )
 
         except Exception as ex:
             logger.error(f"Fetch stock list error : {ex}")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fetch stock list error")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Fetch stock list error {ex}")
 
 
 class StockFetchSelectedByIDSRepository:
@@ -295,50 +330,20 @@ class StockFetchSelectedByIDSRepository:
         self.verifier = ProjectVerify(user_payload=payload, model=StockModel)
         self.ids = ids
 
-    async def fetch_selected_ids(self) -> List[StockListResponse]:
+    async def fetch_selected_ids(self) -> List[StockStandardFetchResponse]:
 
         try:
 
             project_verify = self.verifier.get_project_filter()
 
-            query = (
-                select(StockModel)
-                .options(
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name, OrderedModel.l_name),
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),  # Load category
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
-                    joinedload(StockModel.warehouses)
-                    .joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),  # Load material_code
-                    joinedload(StockModel.project)
-                )
-                .where(
-                    StockModel.id.in_(self.ids),
-                    project_verify if project_verify is not True else True)
-                .limit(150)
-            )
-
-            result = await self.db.execute(query)
+            filters = []
+            if project_verify is not True:
+                filters.append(project_verify)
+            filters.append(StockModel.id.in_(self.ids))
+            result = await StockFetchQuery.fetch_query(self.db, len(self.ids), *filters)
             stocks = result.unique().scalars().all()
 
-            return [
-                StockListResponse(
-                    id=i.id,
-                    quantity=i.quantity,
-                    left_over=i.left_over,
-                    serial_number=i.serial_number,
-                    material_id=i.material_id,
-                    project=i.project.project_name,
-                    material_name=i.warehouses.material_name,
-                    description=i.warehouses.material_code.description,
-                    category=i.warehouses.category.category_name,
-                    ordered=i.warehouses.ordered.username,
-                    company=i.warehouses.company.company_name
-                )
-                for i in stocks
-            ]
+            return StockStandardResponse.format_response(list(stocks))
 
         except SQLAlchemyError as ex:
             logger.exception(f"Database operation failed {ex}")
@@ -359,7 +364,7 @@ class StockGetByIdRepository:
         self.item_id = item_id
         self.verifier = ProjectVerify(user_payload=user_payload, model=StockModel)
 
-    async def get_by_id(self) -> StockListResponse:
+    async def get_by_id(self) -> StockStandardFetchResponse:
         try:
             return await self._fetch_data()
         except HTTPException as ex:
@@ -375,44 +380,97 @@ class StockGetByIdRepository:
             raise HTTPException(status_code=400, detail=f"Get stock by id error {ex}")
 
     async def _fetch_data(self):
-        project_filter = self.verifier.get_project_filter()
-        query = (
-            select(StockModel)
-            .options(
-                joinedload(StockModel.warehouses)
-                .joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name,OrderedModel.l_name),
-                joinedload(StockModel.warehouses)
-                .joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),
-                joinedload(StockModel.warehouses)
-                .joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
-                joinedload(StockModel.warehouses)
-                .joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),
-                joinedload(StockModel.project)
-            )
-            .where(StockModel.id == self.item_id,
-                   project_filter if  project_filter is not True else True)
-            .limit(1)
-        )
+        project_verify = self.verifier.get_project_filter()
 
-        result = await self.db.execute(query)
+        filters = []
+        if project_verify is not True:
+            filters.append(project_verify)
+        filters.append(StockModel.id == self.item_id)
+        result = await StockFetchQuery.fetch_query(self.db, 1, *filters)
+
         stock = result.scalars().first()
 
         if stock:
-            return self._format_response(stock)
+            temp = [stock]
+            return StockStandardResponse.format_response(temp)[0]
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock id not available")
 
-    def _format_response(self, stock: StockModel):
-        return StockListResponse(
-                id=stock.id,
-                quantity=stock.quantity,
-                left_over=stock.left_over,
-                serial_number=stock.serial_number,
-                material_id=stock.material_id,
-                project=stock.project.project_name,
-                material_name=stock.warehouses.material_name,
-                description=stock.warehouses.material_code.description,
-                category=stock.warehouses.category.category_name,
-                ordered=stock.warehouses.ordered.username,
-                company=stock.warehouses.company.company_name
+
+class StockFilterRepository:
+
+    def __init__(self, db: AsyncSession, filter_data: StockFilterSchema, user_payload: UserTokenSchema):
+        self.db = db
+        self.filter_data = filter_data
+        self.user_payload = user_payload
+        self.verifier = ProjectVerify(user_payload=user_payload, model=StockModel)
+
+    async def filter(self):
+
+        try:
+            data = await self.db.execute(self._build_query())
+            temp = data.scalars().all()
+            result = StockStandardResponse.format_response(list(temp))
+            return result
+
+        except Exception as ex:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ex}")
+
+    def _build_query(self):
+        ALLOWED_FIELDS = {
+            "material_name": lambda val: WarehouseModel.material_name.ilike(f'%{val}%'),
+            "quantity": lambda val: StockModel.quantity == val,
+            "unit": lambda val: WarehouseModel.unit.ilike(f'%{val}%'),
+            "price": lambda val: WarehouseModel.price == val,
+            "currency": lambda val: WarehouseModel.currency == val,
+            "category_id": lambda val: WarehouseModel.category_id == val,
+            "po_num": lambda val: WarehouseModel.po_num.ilike(f'%{val}%'),
+            "doc_num": lambda val: WarehouseModel.doc_num.ilike(f'%{val}%'),
+            "material_code_id": lambda val: WarehouseModel.material_code_id == val,
+            "project_id": lambda val: StockModel.project_id == val,
+            "ordered_id": lambda val: StockModel.warehouses.ordered_id == val,
+            "company_id": lambda val: WarehouseModel.company_id == val,
+            "created_at": lambda val: func.date(StockModel.created_at) == val,
+            "serial_number": lambda val: StockModel.serial_number == val,
+            "material_id": lambda val: StockModel.material_id == val,
+        }
+
+        filters = []
+
+        for field, value in self.filter_data.filter_data.__dict__.items():
+            if value is not None and field in ALLOWED_FIELDS:
+                condition = ALLOWED_FIELDS[field](value)
+                filters.append(condition)
+
+        project = self._verify_project()
+        if project is not None:
+            filters.append(project)
+
+        stmt = (
+            select(StockModel)
+            .join(WarehouseModel, StockModel.warehouse_id == WarehouseModel.id, isouter=True)
+            .where(*filters)
+            .options(
+                joinedload(StockModel.warehouses).options(
+                    joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name,
+                                                                 OrderedModel.l_name),
+                    joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),
+                    joinedload(WarehouseModel.company).load_only(CompanyModel.company_name),
+                    joinedload(WarehouseModel.material_code).load_only(MaterialCodeModel.description),
+                    joinedload(WarehouseModel.project).load_only(ProjectModel.project_name)
+                ),
             )
+        )
+
+        return stmt
+
+    def _verify_project(self):
+        project_id: int = self.user_payload.get('project_id')
+        if not project_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project ID required.")
+
+        if project_id == 1:
+            return None
+
+        return StockModel.project_id == project_id
+

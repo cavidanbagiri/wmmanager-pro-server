@@ -22,13 +22,14 @@ from src.logging_config import setup_logger
 logger = setup_logger(__name__, 'warehouse.log')
 
 
-class WarehouseStandartResponse:
+class WarehouseStandardResponse:
 
     @staticmethod
     def format_response(model: list[WarehouseModel]):
         return [
             WarehouseStandartFetchResponseSchema(
                 id=warehouse.id,
+                material_name=warehouse.material_name,
                 qty=warehouse.qty,
                 left_over=warehouse.left_over,
                 unit=warehouse.unit,
@@ -61,11 +62,11 @@ class WarehouseFetchQuery:
 
     @staticmethod
     async def fetch_query(session: AsyncSession, limit: int, *where_clauses):
-        clean_clauses = [clause for clause in where_clauses if clause is not None and clause is not True]
+        filters = [clause for clause in where_clauses if clause is not None and clause is not True]
 
         stmt = select(WarehouseModel)
-        if clean_clauses:
-            stmt = stmt.where(*clean_clauses)
+        if filters:
+            stmt = stmt.where(*filters)
 
         stmt = stmt.limit(limit).options(
                 joinedload(WarehouseModel.ordered).load_only(
@@ -247,7 +248,7 @@ class WarehouseGetByIdRepository:
 
             if warehouse:
                 temp = [warehouse]
-                return WarehouseStandartResponse.format_response(temp)[0]
+                return WarehouseStandardResponse.format_response(temp)[0]
             else:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse id not found")
 
@@ -283,7 +284,7 @@ class WarehouseFetchRepository:
 
             result = await WarehouseFetchQuery.fetch_query(self.db, 150, *filters)
             warehouses = result.scalars().all()
-            return WarehouseStandartResponse.format_response(list(warehouses))
+            return WarehouseStandardResponse.format_response(list(warehouses))
 
         except SQLAlchemyError as ex:
             logger.exception(f"Database operation failed {ex}")
@@ -318,7 +319,7 @@ class WarehouseSelectedByIDSRepository:
             result = await WarehouseFetchQuery.fetch_query(self.db, len(ids), *filters)
             warehouses = result.scalars().all()
 
-            return WarehouseStandartResponse.format_response(list(warehouses))
+            return WarehouseStandardResponse.format_response(list(warehouses))
 
         except SQLAlchemyError as ex:
             logger.exception(f"Database operation failed {ex}")
@@ -341,11 +342,12 @@ class WarehouseFilterRepository:
 
     async def filter(self):
         try:
-            # query = self._build_filter_query()
-            # data = await self.db.execute(text(query))
             data = await self.db.execute(self._build_filter_query())
-            temp = data.mappings().fetchall()
-            return temp
+            temp = data.scalars().all()
+            # print(f'............{temp}')
+            result = WarehouseStandardResponse.format_response(list(temp))
+            return result
+            # return temp
 
         except Exception as ex:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ex}")
@@ -380,8 +382,27 @@ class WarehouseFilterRepository:
         if project is not None:
             filters.append(project)
         stmt = select(WarehouseModel).where(*filters)
-        #this will give to us exact writing row query for testing
-        print(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        stmt = stmt.options(
+                joinedload(WarehouseModel.ordered).load_only(
+                    OrderedModel.f_name,
+                    OrderedModel.m_name,
+                    OrderedModel.l_name
+                ),
+                joinedload(WarehouseModel.category).load_only(
+                    MaterialCategoryModel.category_name
+                ),
+                joinedload(WarehouseModel.project).load_only(
+                    ProjectModel.project_name
+                ),
+                joinedload(WarehouseModel.material_code).load_only(
+                    MaterialCodeModel.description
+                ),
+                joinedload(WarehouseModel.company).load_only(
+                    CompanyModel.company_name
+                )
+            )
+        # this will give to us exact writing row query for testing
+        # print(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
         return stmt
 
     def _verify_project(self) :

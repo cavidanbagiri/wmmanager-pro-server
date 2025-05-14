@@ -57,17 +57,18 @@ class WarehouseListSelectByIDS(BaseModel):
 
 class WarehouseStandartFetchResponseSchema(BaseModel):
     id:int
+    material_name: str
     qty: float
     left_over: float
     unit: str
     price: float | None = None
     currency: str | None = None
     created_at: datetime
+    material_code: dict
+    category: str
     project: dict
     ordered: dict
     company: dict
-    material_code: dict
-    category: str
 
 
 class WarehouseFilterFieldSchema(BaseModel):

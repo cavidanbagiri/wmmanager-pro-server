@@ -57,6 +57,7 @@ class WarehouseModel(Base):
     project = relationship("ProjectModel")
     material_code = relationship("MaterialCodeModel")
     company = relationship("CompanyModel")
+    stocks = relationship("StockModel", back_populates="warehouses")
 
 
     def __str__(self):

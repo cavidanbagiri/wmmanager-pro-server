@@ -126,7 +126,8 @@ async def get_by_id(item_id: UnsignedInt,
 
 
 
-@router.post('/filter', status_code=status.HTTP_200_OK)
+@router.post('/filter', status_code=status.HTTP_200_OK,
+             response_model=list[WarehouseStandartFetchResponseSchema])
 async def filter(filter_data: WarehouseFilterSchema,
                  user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
                  db: Annotated[AsyncSession,  Depends(get_db)]):

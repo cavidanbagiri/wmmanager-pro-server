@@ -1,17 +1,25 @@
 from typing import List, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.core.types.numeric import UnsignedInt
-from src.repositories.stock_repository import StockReturnToWarehouseRepository, StockGetByIdRepository
-from src.schemas.stock_schema import StockReturnToWarehouseSchema
-from src.auth.token_handler import TokenHandler
 from src.database.setup import get_db
+from src.core.types.numeric import UnsignedInt
 from src.dependencies.roles_authorization import project_role_based_authorization
-from src.repositories.stock_repository import StockAddRepository, StockFetchRepository, StockFetchSelectedByIDSRepository
-from src.schemas.stock_schema import StockListRequest, StockListResponse, StockListSelectByIDS
+from src.auth.token_handler import TokenHandler
+
+from src.schemas.stock_schema import (StockReturnToWarehouseSchema,
+                                      StockFilterSchema,
+                                      StockListRequest,
+                                      StockStandardFetchResponse,
+                                      StockListSelectByIDS)
+
+from src.repositories.stock_repository import (StockAddRepository,
+                                               StockFetchRepository,
+                                               StockFetchSelectedByIDSRepository,
+                                               StockFilterRepository,
+                                               StockReturnToWarehouseRepository,
+                                               StockGetByIdRepository)
+
 
 from src.logging_config import setup_logger
 from src.schemas.user_schemas import UserTokenSchema
@@ -57,9 +65,11 @@ async def return_to_warehouse(return_data: StockReturnToWarehouseSchema,
         logger.error(f'Return Warehouse Error {ex}')
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Internal Server Error')
 
+
 # Tested
 @router.get('/fetch-stock_list', status_code=200,
-            response_model=List[StockListResponse])
+            # response_model=List[StockListResponse]
+            )
 async def fetch_stock_list(db: Annotated[AsyncSession,  Depends(get_db)],
                            payload: UserTokenSchema = Depends(TokenHandler.verify_access_token)):
 
@@ -96,7 +106,7 @@ async def fetch_selected_ids(request: StockListSelectByIDS,
 # Tested
 @router.get('/{item_id}',
             status_code=status.HTTP_200_OK,
-            response_model=StockListResponse
+            response_model=StockStandardFetchResponse
             )
 async def get_by_id(item_id: UnsignedInt,
                             user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
@@ -111,5 +121,26 @@ async def get_by_id(item_id: UnsignedInt,
     except Exception as ex:
         logger.error(f"Fetch Selected IDS error {ex}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+
+
+@router.post('/filter', status_code=status.HTTP_200_OK,
+             response_model=list[StockStandardFetchResponse])
+async def filter(filter_data: StockFilterSchema,
+                 user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                 db: Annotated[AsyncSession,  Depends(get_db)]):
+
+    try:
+        repository = StockFilterRepository(db, filter_data, user_payload)
+        data = await repository.filter()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Selected IDS error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
 
 

@@ -8,14 +8,11 @@ from src.logging_config import setup_logger
 from src.routers import user_router, area_router, admin_router, common_router
 from src.routers import stock_router, warehouse_router
 
-
 logger = setup_logger(__name__, "main.log")
-
 
 from fastapi import FastAPI
 
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
