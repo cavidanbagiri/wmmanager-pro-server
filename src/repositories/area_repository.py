@@ -2,26 +2,85 @@
 from typing import List, Tuple
 
 
-from sqlalchemy import update, select, desc, insert
+from sqlalchemy import update, select, desc, insert, func
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import status, HTTPException
 
+from src.models.warehouse_model import MaterialCategoryModel
 from src.dependencies.verify_project import ProjectVerify
 from src.models import ProjectModel
 from src.models.area_model import AreaModel
-from src.models.ordered_model import GroupModel
+from src.models.ordered_model import GroupModel, OrderedModel
 from src.models.stock_models import StockModel
 from src.models.warehouse_model import WarehouseModel
 from src.models.logging_models import LogAreaMovementModel
-from src.schemas.area_schemas import AreaListAddSchema, AreaAddSchema, AreaResponseSchema, AreaReturnStockSchema
+from src.schemas.area_schemas import AreaListAddSchema, AreaAddSchema, AreaResponseSchema, AreaReturnStockSchema, AreaFilterSchema
 
 from src.logging_config import setup_logger
 from src.schemas.user_schemas import UserTokenSchema
 
 logger = setup_logger(__name__, "area.log")
+
+
+class AreaStandardResponse:
+
+    @staticmethod
+    def format_response(model: list[AreaModel]):
+        return [
+            AreaResponseSchema(
+                id=area.id,
+                material_name=area.stock.warehouses.material_name,
+                quantity=area.quantity,
+                unit=area.stock.warehouses.unit,
+                serial_number=area.serial_number,
+                material_id=area.material_id,
+                username=area.username.title(),
+                provide_type=area.provide_type.title(),
+                card_number=area.card_number,
+                created_at=area.created_at,
+                project={
+                    "id": area.project.id,
+                    "project_name": area.project.project_name.upper(),
+                },
+                group={
+                    "id":area.group.id,
+                    "group_name":area.group.group_name.title()
+                },
+                stock={
+                    "id": area.stock.id
+                },
+                category={
+                    "id": area.stock.warehouses.category.id,
+                    "category_name": area.stock.warehouses.category.category_name.title()
+                },
+            )
+            for area in model
+        ]
+
+
+class AreaFetchQuery:
+
+    @staticmethod
+    async def fetch_query(session: AsyncSession, limit: int, *where_clause):
+
+        # List Comprehension
+        filters = [ i for i in where_clause if i is not None and i is not True ]
+
+        stmt = select(AreaModel)
+        stmt = stmt.where(*filters)
+
+        stmt = stmt.limit(limit).options(
+                    joinedload(AreaModel.stock).
+                    joinedload(StockModel.warehouses).joinedload(WarehouseModel.category).load_only(MaterialCategoryModel.category_name),
+                    joinedload(AreaModel.group).load_only(GroupModel.group_name),
+                    joinedload(AreaModel.project).load_only(ProjectModel.project_name)
+                )
+
+        return await session.execute(stmt)
 
 
 class AreaAddRepository:
@@ -244,37 +303,15 @@ class AreaFetchRepository:
 
             project_verify = self.verifier.get_project_filter()
 
-            data = await self.db.execute(
-                select(AreaModel)
-                .order_by(desc(AreaModel.created_at))
-                .options(
-                    joinedload(AreaModel.stock).joinedload(StockModel.warehouses).load_only(WarehouseModel.material_name),
-                    joinedload(AreaModel.group).load_only(GroupModel.group_name),
-                    joinedload(AreaModel.project).load_only(ProjectModel.project_name)
-                )
-                .where(project_verify if project_verify is not True else True)
-                .limit(150)
-            )
+            filters = []
+
+            if project_verify is not True:
+                filters.append(project_verify)
+            data = await AreaFetchQuery.fetch_query(self.db, 150, *filters)
+
             temp = data.scalars().all()
-            return_list: List = []
-            for i in temp:
-                data = AreaResponseSchema(
-                    id = i.id,
-                    material_name = i.stock.warehouses.material_name,
-                    quantity=i.quantity,
-                    serial_number=i.serial_number,
-                    material_id=i.material_id,
-                    username = i.username.title(),
-                    provide_type = i.provide_type.title(),
-                    project_name = i.project.project_name.upper(),
-                    card_number = i.card_number,
-                    created_at= i.created_at,
-                    group_name = i.group.group_name.title(),
-                    stock_id= i.stock.id,
-                    project_id= i.project.id
-                )
-                return_list.append(data)
-            return return_list
+
+            return AreaStandardResponse.format_response(list(temp))
 
         except SQLAlchemyError as ex:
             logger.exception(f"Database operation failed {ex}")
@@ -312,39 +349,96 @@ class AreaGetByIdRepository:
 
     async def _fetch_data(self):
 
-        project_filter = self.verifier.get_project_filter()
+        project_verify = self.verifier.get_project_filter()
 
-        data = await self.db.execute(
-            select(AreaModel)
-            .order_by(desc(AreaModel.created_at))
-            .options(
-                joinedload(AreaModel.stock).joinedload(StockModel.warehouses).load_only(WarehouseModel.material_name),
-                joinedload(AreaModel.group).load_only(GroupModel.group_name),
-                joinedload(AreaModel.project).load_only(ProjectModel.project_name)
-            )
-            .where(AreaModel.id == self.item_id, project_filter if  project_filter is not True else True)
-            .limit(1)
-        )
-        temp = data.scalars().first()
+        filters = []
 
-        if temp:
-            return self._format_response(temp)
+        if project_verify is not True:
+            filters.append(project_verify)
+
+        filters.append(AreaModel.id == self.item_id)
+
+        data = await AreaFetchQuery.fetch_query(self.db, 1, *filters)
+
+        result = data.scalars().first()
+
+        if result:
+            temp = [result]
+            return AreaStandardResponse.format_response(temp)[0]
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area id not available")
 
-    def _format_response(self, area: AreaModel):
-        return AreaResponseSchema(
-                    id = area.id,
-                    material_name = area.stock.warehouses.material_name,
-                    quantity = area.quantity,
-                    serial_number = area.serial_number,
-                    material_id = area.material_id,
-                    username = area.username.title(),
-                    provide_type = area.provide_type.title(),
-                    project_name = area.project.project_name.upper(),
-                    card_number = area.card_number,
-                    created_at = area.created_at,
-                    group_name = area.group.group_name.title(),
-                    stock_id = area.stock.id,
-                    project_id = area.project.id
-                )
+
+class AreaFilterRepository:
+
+    def __init__(self, db: AsyncSession, filter_data: AreaFilterSchema, user_payload: UserTokenSchema):
+        self.db = db
+        self.filter_data = filter_data
+        self.project_verifier = ProjectVerify(user_payload, model=AreaModel)
+        self.user_payload = user_payload
+
+    async def filter(self):
+
+        try:
+            data = await self.db.execute(self._build_query())
+            temp = data.unique().scalars().all()
+            result = AreaStandardResponse.format_response(list(temp))
+            return result
+
+        except Exception as ex:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ex}")
+
+    def _build_query(self):
+
+        ALLOWED_FIELDS = {
+            "material_name": lambda val : WarehouseModel.material_name.ilike(f'%{val}%'),
+            "quantity": lambda val : AreaModel.quantity.ilike(f'%{val}%'),
+            "serial_number": lambda val : AreaModel.serial_number.ilike(f'%{val}%'),
+            "material_id": lambda val : AreaModel.material_id.ilike(f'%{val}%'),
+            "username": lambda val : AreaModel.username.ilike(f'%{val}%'),
+            "provide_type": lambda val : AreaModel.provide_type.ilike(f'%{val}%'),
+            "card_number": lambda val : AreaModel.card_number.ilike(f'%{val}%'),
+            "created_at": lambda val : func.date(AreaModel.created_at) == val,
+            "group_id": lambda val : GroupModel.id == val,
+            "stock_id": lambda val : AreaModel.stock_id == val,
+            "project_id": lambda val : AreaModel.project_id == val,
+            "category_id": lambda val : MaterialCategoryModel.id == val
+        }
+
+        filters = []
+
+        for field, value in self.filter_data.filter_data.__dict__.items():
+            if value is not None and field in ALLOWED_FIELDS:
+                condition = ALLOWED_FIELDS[field](value)
+                filters.append(condition)
+
+        project = self._verify_project()
+        if project is not None:
+            filters.append(project)
+
+        stmt = (
+            select(AreaModel)
+            .where(*filters)
+            .options(
+                joinedload(AreaModel.stock).
+                joinedload(StockModel.warehouses).joinedload(WarehouseModel.category).load_only(
+                    MaterialCategoryModel.category_name),
+                joinedload(AreaModel.group).load_only(GroupModel.group_name),
+                joinedload(AreaModel.project).load_only(ProjectModel.project_name)
+            )
+        )
+        # print('-----------------------------------------')
+        # print(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        # print('-----------------------------------------')
+
+        return stmt
+
+    def _verify_project(self):
+        project_id: int = self.user_payload.get('project_id')
+        if not project_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project ID required.")
+
+        if project_id == 1:
+            return None
+
+        return AreaModel.project_id == project_id

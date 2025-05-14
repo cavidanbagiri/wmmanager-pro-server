@@ -9,8 +9,8 @@ from src.auth.token_handler import TokenHandler
 from src.database.setup import get_db
 from src.dependencies.roles_authorization import project_role_based_authorization
 from src.repositories.area_repository import AreaAddRepository, AreaFetchRepository, AreaReturnToStockRepository, \
-    AreaGetByIdRepository
-from src.schemas.area_schemas import AreaListAddSchema, AreaResponseSchema, AreaReturnStockSchema
+    AreaGetByIdRepository, AreaFilterRepository
+from src.schemas.area_schemas import AreaListAddSchema, AreaResponseSchema, AreaReturnStockSchema, AreaFilterSchema
 from src.schemas.user_schemas import UserTokenSchema
 
 router = APIRouter()
@@ -91,4 +91,21 @@ async def get_stock_by_id(item_id: UnsignedInt,
         logger.error(f"Fetch Selected IDS error {ex}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
+
+@router.post('/filter', status_code=status.HTTP_200_OK,
+             response_model=list[AreaResponseSchema])
+async def filter(filter_data: AreaFilterSchema,
+                 user_payload: Annotated[UserTokenSchema, Depends(TokenHandler.verify_access_token)],
+                 db: Annotated[AsyncSession,  Depends(get_db)]):
+
+    try:
+        repository = AreaFilterRepository(db, filter_data, user_payload)
+        data = await repository.filter()
+        return data
+    except HTTPException as ex:
+        raise ex
+    except Exception as ex:
+        logger.error(f"Fetch Selected IDS error {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 

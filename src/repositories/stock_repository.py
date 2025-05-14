@@ -72,7 +72,7 @@ class StockFetchQuery:
 
         stmt = stmt.where(*filters)
 
-        stmt = stmt.options(
+        stmt = stmt.limit(limit).options(
             joinedload(StockModel.warehouses)
             .options(
                 joinedload(WarehouseModel.ordered).load_only(OrderedModel.f_name, OrderedModel.m_name, OrderedModel.l_name),

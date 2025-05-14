@@ -58,13 +58,13 @@ class StockFilterFieldSchema(BaseModel):
     category_id: int | None = None
     po_num: str | None = None
     doc_num: str | None = None
-    material_code_id: int | None = None
-    project_id: int | None = None
-    ordered_id: int | None = None
-    company_id: int | None = None
     created_at: datetime | None = None
     serial_number: str | None = None
     material_id: str | None = None
+    project_id: int | None = None
+    ordered_id: int | None = None
+    company_id: int | None = None
+    material_code_id: int | None = None
 
 
 class StockFilterSchema(BaseModel):
