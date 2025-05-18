@@ -1,17 +1,15 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-Units = Literal["pcs","ton","kg","pallet","box","case","each","roll","meter","liter","gallon","pack","bundle","drum","carton","bag","sheet","pair","set"]
-
+from src.constants.constants import Units, Currency
 
 class WarehouseSchema(BaseModel):
     material_name: str
     qty: float
     unit: Units
     price: float | None = None
-    currency: str | None = None
+    currency: Currency | None = None
     material_code_id: int
     category_id: int
 
@@ -41,10 +39,10 @@ class WarehouseUpdateSchema(BaseModel):
     qty: float
     unit: Units
     price: float | None = None
-    currency: str | None = None
-    category_id: int
+    currency: Currency | None = None
     po_num: str | None = None
     doc_num: str | None = None
+    category_id: int
     material_code_id: int
     project_id: int
     ordered_id: int
@@ -62,7 +60,7 @@ class WarehouseStandartFetchResponseSchema(BaseModel):
     left_over: float
     unit: str
     price: float | None = None
-    currency: str | None = None
+    currency: Currency | None = None
     created_at: datetime
     material_code: dict
     category: str
@@ -76,7 +74,7 @@ class WarehouseFilterFieldSchema(BaseModel):
     qty: float | None = None
     unit: Units | None = None
     price: float | None = None
-    currency: str | None = None
+    currency: Currency | None = None
     category_id: int | None = None
     po_num: str | None = None
     doc_num: str | None = None

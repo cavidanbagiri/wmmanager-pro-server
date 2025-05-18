@@ -3,7 +3,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-Units = Literal["pcs","ton","kg","pallet","box","case","each","roll","meter","liter","gallon","pack","bundle","drum","carton","bag","sheet","pair","set"]
+from src.constants.constants import Units
 
 class AreaAddSchema(BaseModel):
     quantity: float

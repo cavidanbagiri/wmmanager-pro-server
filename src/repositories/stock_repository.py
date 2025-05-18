@@ -33,6 +33,7 @@ class StockStandardResponse:
             StockStandardFetchResponse(
                 id=i.id,
                 quantity=i.quantity,
+                unit=i.warehouses.unit,
                 left_over=i.left_over,
                 serial_number=i.serial_number,
                 material_id=i.material_id,

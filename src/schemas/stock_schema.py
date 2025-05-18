@@ -3,7 +3,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel
 
-Units = Literal["pcs","ton","kg","pallet","box","case","each","roll","meter","liter","gallon","pack","bundle","drum","carton","bag","sheet","pair","set"]
+from src.constants.constants import Units
 
 
 class StockAddSchema(BaseModel):
@@ -28,6 +28,7 @@ class StockStandardFetchResponse(BaseModel):
     id: int
     material_name: str
     quantity: float
+    unit: Units
     left_over: float
     serial_number: str | None = None
     material_id: str | None = None
@@ -53,8 +54,6 @@ class StockFilterFieldSchema(BaseModel):
     material_name: str | None = None
     quantity: float | None = None
     unit: Units | None = None
-    price: float | None = None
-    currency: str | None = None
     category_id: int | None = None
     po_num: str | None = None
     doc_num: str | None = None
